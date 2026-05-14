@@ -70,11 +70,27 @@ export type Progress =
   | { phase: "signals"; done: number; total: number }
   | { phase: "simulating"; done: number; total: number };
 
+export type Scorer = (
+  snapshots: SymbolSnapshot[],
+  opts: { asOf: string; mode: "backtest" },
+) => Promise<Signal[]>;
+
+export interface RunBacktestOptions {
+  onProgress?: (p: Progress) => void;
+  /** Override the LLM scorer — used by tests to inject deterministic signals. */
+  scorer?: Scorer;
+}
+
 export async function runBacktest(
   series: SymbolSeries[],
   cfg: BacktestConfig,
-  onProgress?: (p: Progress) => void,
+  optsOrOnProgress?: RunBacktestOptions | ((p: Progress) => void),
 ): Promise<BacktestResult> {
+  const opts: RunBacktestOptions = typeof optsOrOnProgress === "function"
+    ? { onProgress: optsOrOnProgress }
+    : (optsOrOnProgress ?? {});
+  const onProgress = opts.onProgress;
+  const scorer: Scorer = opts.scorer ?? scoreSymbols;
   const dates = alignedTradingDates(series).filter(
     (d) => d >= cfg.startDate && d <= cfg.endDate,
   );
@@ -108,7 +124,7 @@ export async function runBacktest(
             fundamental: s.fundamental,
           };
         });
-        const sigs = await scoreSymbols(snapshots, { asOf: d, mode: "backtest" });
+        const sigs = await scorer(snapshots, { asOf: d, mode: "backtest" });
         signalsDone++;
         onProgress?.({ phase: "signals", done: signalsDone, total: rebalanceDates.length });
         return [d, sigs] as const;

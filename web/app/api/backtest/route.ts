@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
-import { DEFAULT_UNIVERSE } from "@/lib/universe";
+import { loadEntries } from "@/lib/universe";
 import { fetchKlines, fetchFundamental } from "@/lib/pyserver";
 import { runBacktest, type BacktestConfig, type SymbolSeries } from "@/lib/backtest";
+import { mapPool } from "@/lib/concurrent";
+
+const LOAD_CONCURRENCY = Number(process.env.BACKTEST_LOAD_CONCURRENCY ?? 6);
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -38,39 +41,41 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       };
       try {
-        send({ type: "progress", phase: "loading", done: 0, total: DEFAULT_UNIVERSE.length });
+        const universe = loadEntries();
+        send({ type: "progress", phase: "loading", done: 0, total: universe.length });
         let loaded = 0;
-        const series: SymbolSeries[] = (
-          await Promise.all(
-            DEFAULT_UNIVERSE.map(async (entry): Promise<SymbolSeries | null> => {
-              const [klines, fund] = await Promise.all([
-                fetchKlines(entry.symbol, aksStart, aksEnd).catch(() => []),
-                fetchFundamental(entry.symbol).catch(() => undefined),
-              ]);
-              loaded++;
-              send({
-                type: "progress",
-                phase: "loading",
-                done: loaded,
-                total: DEFAULT_UNIVERSE.length,
-              });
-              if (klines.length < 20) return null;
-              return {
-                entry,
-                klines,
-                fundamental: fund
-                  ? {
-                      pe_ttm: fund.pe_ttm ?? null,
-                      pb: fund.pb ?? null,
-                      market_cap: fund.market_cap ?? null,
-                    }
-                  : undefined,
-              };
-            }),
-          )
-        ).filter((x): x is SymbolSeries => x !== null);
+        let failed = 0;
+        const loadedSeries = await mapPool(universe, LOAD_CONCURRENCY, async (entry): Promise<SymbolSeries | null> => {
+          const [klinesRes, fundRes] = await Promise.allSettled([
+            fetchKlines(entry.symbol, aksStart, aksEnd),
+            fetchFundamental(entry.symbol),
+          ]);
+          loaded++;
+          send({ type: "progress", phase: "loading", done: loaded, total: universe.length });
+          if (klinesRes.status !== "fulfilled" || klinesRes.value.length < 20) {
+            failed++;
+            const why = klinesRes.status === "rejected"
+              ? (klinesRes.reason instanceof Error ? klinesRes.reason.message : String(klinesRes.reason))
+              : `only ${klinesRes.value.length} bars`;
+            send({ type: "log", message: `skip ${entry.symbol} ${entry.name}: ${why.slice(0, 120)}` });
+            return null;
+          }
+          const fund = fundRes.status === "fulfilled" ? fundRes.value : undefined;
+          return {
+            entry,
+            klines: klinesRes.value,
+            fundamental: fund
+              ? {
+                  pe_ttm: fund.pe_ttm ?? null,
+                  pb: fund.pb ?? null,
+                  market_cap: fund.market_cap ?? null,
+                }
+              : undefined,
+          };
+        });
+        const series: SymbolSeries[] = loadedSeries.filter((x): x is SymbolSeries => x !== null);
 
-        send({ type: "log", message: `${series.length} symbols loaded` });
+        send({ type: "log", message: `${series.length} symbols loaded (${failed} failed/skipped)` });
 
         if (series.length === 0) {
           send({ type: "error", message: "no data loaded from pyserver" });

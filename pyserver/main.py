@@ -136,6 +136,28 @@ def _normalize_symbol(symbol: str) -> tuple[str, str]:
     return s, "hk"
 
 
+# ---------- retry wrapper --------------------------------------------------
+
+
+def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwargs):
+    """Run an akshare call with exponential-backoff retries.
+
+    Upstream east-money endpoints respond with sporadic ConnectionResetError /
+    ReadTimeout / 502 / empty results when too many concurrent symbols hit at
+    once. A small retry loop lets the sidecar absorb that without bubbling
+    up an error that the caller would only react to by retrying anyway.
+    """
+    last: Exception | None = None
+    for i in range(attempts):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            last = e
+            time.sleep(base_delay * (2 ** i))
+    assert last is not None
+    raise last
+
+
 # ---------- endpoints ------------------------------------------------------
 
 
@@ -160,9 +182,15 @@ def klines(
     code, market = _normalize_symbol(symbol)
     try:
         if market == "hk":
-            df = ak.stock_hk_hist(symbol=code, period="daily", start_date=start, end_date=end, adjust=adjust)
+            df = _with_retries(
+                ak.stock_hk_hist,
+                symbol=code, period="daily", start_date=start, end_date=end, adjust=adjust,
+            )
         else:
-            df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start, end_date=end, adjust=adjust)
+            df = _with_retries(
+                ak.stock_zh_a_hist,
+                symbol=code, period="daily", start_date=start, end_date=end, adjust=adjust,
+            )
     except Exception as e:
         raise HTTPException(502, f"akshare error: {e}") from e
 
@@ -190,7 +218,7 @@ def fundamental(symbol: str):
         if market != "hk":
             # PE(TTM) / PB / 总市值 from eastmoney —— stock_a_indicator_lg was
             # removed in akshare 1.18.x; stock_value_em is the supported successor.
-            ind = ak.stock_value_em(symbol=code)
+            ind = _with_retries(ak.stock_value_em, symbol=code)
             if ind is not None and not ind.empty:
                 latest = ind.iloc[-1]
                 pe = latest.get("PE(TTM)")
@@ -229,7 +257,7 @@ def analyst(symbol: str):
         return out
 
     try:
-        df = ak.stock_research_report_em(symbol=code)
+        df = _with_retries(ak.stock_research_report_em, symbol=code)
     except Exception as e:
         raise HTTPException(502, f"akshare error: {e}") from e
 
