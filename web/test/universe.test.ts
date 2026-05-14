@@ -13,7 +13,7 @@ const sample = {
   entries: [
     { symbol: "688256", name: "寒武纪", theme: "算力", global_supply: false },
     { symbol: "300476", name: "胜宏科技", theme: "AI-PCB", global_supply: true },
-    { symbol: "hk00700", name: "腾讯控股", theme: "云", global_supply: true },
+    { symbol: "600845", name: "宝信软件", theme: "云", global_supply: true },
   ],
 };
 fs.writeFileSync(

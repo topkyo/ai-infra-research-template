@@ -1,33 +1,60 @@
 import Link from "next/link";
-import { loadEntries } from "@/lib/universe";
+import { readUniverse } from "@/lib/universe";
 import RefreshUniverseButton from "./RefreshUniverseButton";
 import UniverseTable from "./UniverseTable";
 
 export const dynamic = "force-dynamic";
 
 export default function Home() {
-  const entries = loadEntries();
+  const universe = readUniverse();
+  const entries = universe.entries;
+  const globalCount = entries.filter((e) => e.global_supply).length;
+  const themeCount = new Set(entries.map((e) => e.theme)).size;
 
   return (
     <div className="container">
-      <h1>硅基文明消费股 · 交易策略系统</h1>
-      <p style={{ color: "var(--muted)", marginTop: -8 }}>
-        DeepSeek v4 pro · Tushare · 回测 · 缓存优先
-      </p>
+      <header className="page-header">
+        <div>
+          <div className="eyebrow">DeepSeek · Tushare · A股股票池</div>
+          <h1>硅基文明消费股交易系统</h1>
+          <p>
+            跟踪算力芯片、光模块、AI 服务器、液冷、电力、IDC、半导体材料与 AI-PCB 等供给侧标的。
+          </p>
+        </div>
+        <div className="header-actions">
+          <Link href="/signals" className="button secondary">实时信号</Link>
+          <Link href="/backtest" className="button secondary">策略回测</Link>
+        </div>
+      </header>
 
-      <div className="row" style={{ marginTop: 16 }}>
-        <Link href="/signals" className="card" style={{ flex: 1, textDecoration: "none" }}>
-          <h2 style={{ margin: 0 }}>实时信号</h2>
-          <p>调用 DeepSeek 对全部 watchlist 一次性打分（每股票每日仅 1 次 API）。</p>
-        </Link>
-        <Link href="/backtest" className="card" style={{ flex: 1, textDecoration: "none" }}>
-          <h2 style={{ margin: 0 }}>策略回测</h2>
-          <p>滚动调仓回测；信号缓存，重跑零成本。</p>
-        </Link>
+      <div className="summary-grid">
+        <div className="metric">
+          <span className="label">股票池</span>
+          <strong>{entries.length}</strong>
+          <span>仅 A 股</span>
+        </div>
+        <div className="metric">
+          <span className="label">全球供应链</span>
+          <strong>{globalCount}</strong>
+          <span>{Math.round((globalCount / Math.max(entries.length, 1)) * 100)}% 覆盖</span>
+        </div>
+        <div className="metric">
+          <span className="label">子主题</span>
+          <strong>{themeCount}</strong>
+          <span>按产业环节分组</span>
+        </div>
+        <div className="metric">
+          <span className="label">更新时间</span>
+          <strong>{universe.updated_at}</strong>
+          <span>{universe.updated_by}</span>
+        </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 32 }}>
-        <h2 style={{ margin: 0 }}>股票池（共 {entries.length} 只）</h2>
+      <div className="section-heading">
+        <div>
+          <h2>股票池</h2>
+          <p>筛选、查看评级、目标价和上行空间。</p>
+        </div>
         <RefreshUniverseButton />
       </div>
 

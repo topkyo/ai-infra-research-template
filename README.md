@@ -63,7 +63,7 @@ PYSERVER_URL=http://localhost:8001
 
 ## 默认股票池
 
-详见 `web/lib/universe.ts` —— 围绕 算力 / 光模块 / AI 服务器 / 液冷 / 电力 / IDC / 存储 / 半导体设备 / AI-PCB / 晶圆代工 / 云 等子主题精选的 A 股 + 港股名单，可在 UI 中自由编辑。
+详见 `web/lib/universe.ts` —— 围绕 算力 / 光模块 / AI 服务器 / 液冷 / 电力 / IDC / 存储 / 半导体设备 / AI-PCB / 晶圆代工 / 云 等子主题精选的 A 股名单，可在 UI 中自由编辑。
 
 ## 目录结构
 

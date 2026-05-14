@@ -32,6 +32,8 @@ export default function UniverseTable({ entries }: { entries: UniverseEntry[] })
   );
   const [onlyGlobal, setOnlyGlobal] = useState(false);
   const [onlyUpside, setOnlyUpside] = useState(false);
+  const [query, setQuery] = useState("");
+  const [theme, setTheme] = useState("all");
 
   // Re-seed when entries prop changes (after refresh).
   useEffect(() => {
@@ -66,17 +68,23 @@ export default function UniverseTable({ entries }: { entries: UniverseEntry[] })
   }, [entries]);
 
   const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (onlyGlobal && !r.global_supply) return false;
+      if (theme !== "all" && r.theme !== theme) return false;
+      if (q && !`${r.symbol} ${r.name} ${r.theme} ${r.note ?? ""}`.toLowerCase().includes(q)) return false;
       if (onlyUpside) {
         const u = r.analyst?.upside_pct;
         if (u === undefined || u === null || u <= 0) return false;
       }
       return true;
     });
-  }, [rows, onlyGlobal, onlyUpside]);
+  }, [rows, onlyGlobal, onlyUpside, query, theme]);
 
   const loadedCount = rows.filter((r) => !r.loading).length;
+  const ratedCount = rows.filter((r) => r.analyst?.buy_count != null && r.analyst?.total_count).length;
+  const upsideCount = rows.filter((r) => (r.analyst?.upside_pct ?? 0) > 0).length;
+  const themes = useMemo(() => [...new Set(entries.map((e) => e.theme))].sort(), [entries]);
   const grouped = filtered.reduce<Record<string, Row[]>>((acc, r) => {
     (acc[r.theme] ??= []).push(r);
     return acc;
@@ -84,63 +92,82 @@ export default function UniverseTable({ entries }: { entries: UniverseEntry[] })
 
   return (
     <>
-      <div className="card" style={{ marginTop: 12, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+      <div className="toolbar">
+        <div className="field">
+          <span>搜索</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="代码、名称、主题"
+          />
+        </div>
+        <div className="field">
+          <span>主题</span>
+          <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+            <option value="all">全部主题</option>
+            {themes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <label className="check">
           <input type="checkbox" checked={onlyGlobal} onChange={(e) => setOnlyGlobal(e.target.checked)} />
-          <span>仅全球供应链</span>
+          <span>全球供应链</span>
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+        <label className="check">
           <input type="checkbox" checked={onlyUpside} onChange={(e) => setOnlyUpside(e.target.checked)} />
-          <span>仅目标价 &gt; 现价（含 EPS 测算）</span>
+          <span>目标价高于现价</span>
         </label>
-        <span style={{ color: "var(--muted)", fontSize: 12, marginLeft: "auto" }}>
-          显示 {filtered.length} / {rows.length} · 卖方数据 {loadedCount}/{rows.length}
-        </span>
+        <div className="toolbar-status">
+          显示 {filtered.length}/{rows.length} · 价格 {loadedCount}/{rows.length} · 评级 {ratedCount} · 上行 {upsideCount}
+        </div>
       </div>
 
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="theme-grid">
         {Object.entries(grouped).map(([theme, items]) => (
-          <div key={theme} className="card" style={{ minWidth: 380, flex: "1 1 380px" }}>
-            <strong>{theme}</strong>
-            <table style={{ marginTop: 8 }}>
-              <thead>
-                <tr>
-                  <th>代码</th>
-                  <th>名称</th>
-                  <th>全球链</th>
-                  <th style={{ textAlign: "right" }}>现价</th>
-                  <th style={{ textAlign: "right" }}>目标价</th>
-                  <th style={{ textAlign: "right" }}>上行</th>
-                  <th style={{ textAlign: "right" }}>买入</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((r) => {
-                  const u = r.analyst?.upside_pct;
-                  return (
-                    <tr key={r.symbol}>
-                      <td style={{ color: "var(--muted)" }}>{r.symbol}</td>
-                      <td>{r.name}</td>
-                      <td>{r.global_supply ? "🌐" : ""}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {r.analyst?.current_price?.toFixed(2) ?? (r.loading ? "…" : "—")}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {r.analyst?.implied_target?.toFixed(2) ?? (r.loading ? "…" : "—")}
-                      </td>
-                      <td style={{ textAlign: "right", color: u === undefined || u === null ? "var(--muted)" : u > 0 ? "var(--accent)" : "var(--danger)" }}>
-                        {u === undefined || u === null ? (r.loading ? "…" : "—") : `${u > 0 ? "+" : ""}${u.toFixed(0)}%`}
-                      </td>
-                      <td style={{ textAlign: "right", color: "var(--muted)", fontSize: 12 }}>
-                        {r.analyst?.buy_count !== undefined && r.analyst?.total_count
-                          ? `${r.analyst.buy_count}/${r.analyst.total_count}`
-                          : r.loading ? "…" : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div key={theme} className="theme-panel">
+            <div className="theme-title">
+              <strong>{theme}</strong>
+              <span>{items.length} 只</span>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>全球链</th>
+                    <th className="num">现价</th>
+                    <th className="num">目标价</th>
+                    <th className="num">上行</th>
+                    <th className="num">买入评级</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((r) => {
+                    const u = r.analyst?.upside_pct;
+                    return (
+                      <tr key={r.symbol}>
+                        <td className="mono">{r.symbol}</td>
+                        <td>
+                          <div className="stock-name">{r.name}</div>
+                          {r.note && <div className="stock-note">{r.note}</div>}
+                        </td>
+                        <td>{r.global_supply ? <span className="pill good">是</span> : <span className="pill">否</span>}</td>
+                        <td className="num">{r.analyst?.current_price?.toFixed(2) ?? (r.loading ? "…" : "无")}</td>
+                        <td className="num">{r.analyst?.implied_target?.toFixed(2) ?? (r.loading ? "…" : "无")}</td>
+                        <td className={`num ${u == null ? "muted" : u > 0 ? "pos" : "neg"}`}>
+                          {u == null ? (r.loading ? "…" : "无") : `${u > 0 ? "+" : ""}${u.toFixed(0)}%`}
+                        </td>
+                        <td className="num muted">
+                          {r.analyst?.buy_count != null && r.analyst?.total_count
+                            ? `${r.analyst.buy_count}/${r.analyst.total_count}`
+                            : r.loading ? "…" : "无"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ))}
       </div>

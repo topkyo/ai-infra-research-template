@@ -53,8 +53,14 @@ export default async function SignalsPage() {
 
   return (
     <div className="container">
-      <Link href="/">← 返回</Link>
-      <h1>实时信号</h1>
+      <Link href="/" className="back-link">返回股票池</Link>
+      <header className="page-header compact">
+        <div>
+          <div className="eyebrow">Live scoring</div>
+          <h1>实时信号</h1>
+          <p>基于近 90 日价格、估值和主题信息生成 5-20 个交易日动作建议。</p>
+        </div>
+      </header>
       {error && (
         <div className="card" style={{ borderColor: "var(--danger)" }}>
           <strong>加载失败：</strong> {error}
@@ -65,42 +71,48 @@ export default async function SignalsPage() {
         </div>
       )}
       {!error && (
-        <table className="card" style={{ marginTop: 16 }}>
-          <thead>
-            <tr>
-              <th>代码</th>
-              <th>名称</th>
-              <th>主题</th>
-              <th>动作</th>
-              <th>置信度</th>
-              <th>仓位</th>
-              <th>PE(TTM)</th>
-              <th>理由</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ entry, signal, snapshot }) => (
-              <tr key={entry.symbol}>
-                <td style={{ color: "var(--muted)" }}>{entry.symbol}</td>
-                <td>{entry.name}</td>
-                <td>{entry.theme}</td>
-                <td>
-                  {signal ? (
-                    <span className={`badge ${signal.action}`}>{signal.action}</span>
-                  ) : (
-                    <span className="badge">n/a</span>
-                  )}
-                </td>
-                <td>{signal ? (signal.confidence * 100).toFixed(0) + "%" : "—"}</td>
-                <td>{signal ? (signal.size * 100).toFixed(0) + "%" : "—"}</td>
-                <td>{snapshot?.fundamental?.pe_ttm?.toFixed(1) ?? "—"}</td>
-                <td style={{ color: "var(--muted)", maxWidth: 320 }}>
-                  {signal?.rationale ?? "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="theme-panel">
+          <div className="theme-title">
+            <strong>信号列表</strong>
+            <span>{rows.filter((r) => r.signal?.action === "buy").length} 买入 · {rows.filter((r) => r.signal?.action === "sell").length} 卖出</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>代码</th>
+                  <th>名称</th>
+                  <th>主题</th>
+                  <th>动作</th>
+                  <th className="num">置信度</th>
+                  <th className="num">仓位</th>
+                  <th className="num">PE(TTM)</th>
+                  <th>理由</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ entry, signal, snapshot }) => (
+                  <tr key={entry.symbol}>
+                    <td className="mono">{entry.symbol}</td>
+                    <td>{entry.name}</td>
+                    <td>{entry.theme}</td>
+                    <td>
+                      {signal ? (
+                        <span className={`badge ${signal.action}`}>{signal.action}</span>
+                      ) : (
+                        <span className="badge">n/a</span>
+                      )}
+                    </td>
+                    <td className="num">{signal ? (signal.confidence * 100).toFixed(0) + "%" : "—"}</td>
+                    <td className="num">{signal ? (signal.size * 100).toFixed(0) + "%" : "—"}</td>
+                    <td className="num">{snapshot?.fundamental?.pe_ttm?.toFixed(1) ?? "—"}</td>
+                    <td className="muted signal-reason">{signal?.rationale ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

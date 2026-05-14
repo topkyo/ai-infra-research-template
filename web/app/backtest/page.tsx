@@ -118,25 +118,31 @@ export default function BacktestPage() {
 
   return (
     <div className="container">
-      <Link href="/">← 返回</Link>
-      <h1>策略回测</h1>
+      <Link href="/" className="back-link">返回股票池</Link>
+      <header className="page-header compact">
+        <div>
+          <div className="eyebrow">Backtest</div>
+          <h1>策略回测</h1>
+          <p>滚动生成 DeepSeek 信号并按调仓周期撮合，行情与信号会被缓存。</p>
+        </div>
+      </header>
 
-      <div className="card" style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-        <label>
-          起始<br />
+      <div className="toolbar">
+        <label className="field">
+          <span>起始</span>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </label>
-        <label>
-          结束<br />
+        <label className="field">
+          <span>结束</span>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </label>
-        <label>
-          调仓周期(交易日)<br />
+        <label className="field">
+          <span>调仓周期</span>
           <input type="number" min={1} max={60} value={rebalance}
             onChange={(e) => setRebalance(+e.target.value)} />
         </label>
-        <label>
-          最大持仓数<br />
+        <label className="field">
+          <span>最大持仓数</span>
           <input type="number" min={1} max={20} value={maxPositions}
             onChange={(e) => setMaxPositions(+e.target.value)} />
         </label>
@@ -157,7 +163,7 @@ export default function BacktestPage() {
           <div style={{
             height: 8,
             marginTop: 8,
-            background: "#0d1320",
+            background: "var(--field)",
             borderRadius: 4,
             overflow: "hidden",
             border: "1px solid var(--border)",
@@ -193,8 +199,8 @@ export default function BacktestPage() {
             <Kpi label="交易次数" value={result.stats.trades.toString()} />
           </div>
 
-          <h2>权益曲线</h2>
-          <div className="card" style={{ height: 320 }}>
+          <h2 className="subheading">权益曲线</h2>
+          <div className="card chart-card">
             <ResponsiveContainer>
               <LineChart data={result.equityCurve.map((b) => ({ date: b.date, equity: b.equity }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
@@ -209,8 +215,9 @@ export default function BacktestPage() {
             </ResponsiveContainer>
           </div>
 
-          <h2>最近交易</h2>
-          <div className="card">
+          <h2 className="subheading">最近交易</h2>
+          <div className="theme-panel">
+            <div className="table-wrap compact-table">
             <table>
               <thead>
                 <tr><th>日期</th><th>代码</th><th>方向</th><th>数量</th><th>价格</th></tr>
@@ -227,6 +234,7 @@ export default function BacktestPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
