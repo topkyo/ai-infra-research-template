@@ -1,6 +1,7 @@
 // Typed client for the Python akshare sidecar. Adds a thin in-process LRU
 // on top of pyserver's own SQLite cache to dedupe burst calls within a render.
 const BASE = process.env.PYSERVER_URL ?? "http://localhost:8001";
+const TIMEOUT_MS = Number(process.env.PYSERVER_TIMEOUT_MS ?? 60_000);
 
 export interface Kline {
   date: string;
@@ -29,9 +30,15 @@ async function get<T>(path: string, params: Record<string, string>): Promise<T> 
   const existing = inflight.get(key);
   if (existing) return existing as Promise<T>;
   const p = (async () => {
-    const r = await fetch(`${BASE}${path}?${qs}`, { cache: "no-store" });
-    if (!r.ok) throw new Error(`pyserver ${path} ${r.status}: ${await r.text()}`);
-    return (await r.json()) as T;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch(`${BASE}${path}?${qs}`, { cache: "no-store", signal: ctrl.signal });
+      if (!r.ok) throw new Error(`pyserver ${path} ${r.status}: ${await r.text()}`);
+      return (await r.json()) as T;
+    } finally {
+      clearTimeout(timer);
+    }
   })();
   inflight.set(key, p);
   try {
