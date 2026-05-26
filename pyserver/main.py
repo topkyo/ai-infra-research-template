@@ -34,13 +34,21 @@ from pydantic import BaseModel
 # ---------- bootstrap ------------------------------------------------------
 
 load_dotenv(Path(__file__).parent / ".env")
-TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN")
-if not TUSHARE_TOKEN:
-    raise RuntimeError(
-        "TUSHARE_TOKEN not set. Put it in pyserver/.env or export it.",
+TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "").strip()
+MOCK_MODE = TUSHARE_TOKEN.lower() in {"", "mock", "your-tushare-pro-token-here"}
+from mock_data import BENCHMARKS  # noqa: E402
+if MOCK_MODE:
+    from mock_data import (  # noqa: E402
+        mock_analyst,
+        mock_fundamental,
+        mock_klines,
+        mock_spot,
     )
-ts.set_token(TUSHARE_TOKEN)
-_pro = ts.pro_api()
+
+    _pro = None
+else:
+    ts.set_token(TUSHARE_TOKEN)
+    _pro = ts.pro_api()
 
 DB_PATH = Path(__file__).parent / "cache.db"
 
@@ -448,7 +456,12 @@ def _resolve_name(ts_code: str, market: str) -> str | None:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "time": datetime.now().isoformat(), "source": "tushare"}
+    return {
+        "ok": True,
+        "time": datetime.now().isoformat(),
+        "source": "mock" if MOCK_MODE else "tushare",
+        "mock": MOCK_MODE,
+    }
 
 
 @app.get("/klines", response_model=list[Kline])
@@ -464,6 +477,11 @@ def klines(
     cached = cache_get(key)
     if cached is not None:
         return cached
+
+    if MOCK_MODE:
+        rows = mock_klines(symbol, start, end)
+        cache_put(key, rows, 3600)
+        return rows
 
     ts_code, market = _to_ts_code(symbol)
     try:
@@ -519,6 +537,11 @@ def fundamental(symbol: str):
     cached = cache_get(key)
     if cached is not None:
         return cached
+
+    if MOCK_MODE:
+        out = mock_fundamental(symbol)
+        cache_put(key, out, 3600)
+        return out
 
     ts_code, market = _to_ts_code(symbol)
     out: dict[str, Any] = {"symbol": symbol, "name": _resolve_name(ts_code, market)}
@@ -582,6 +605,11 @@ def analyst(symbol: str):
     cached = cache_get(key)
     if cached is not None:
         return cached
+
+    if MOCK_MODE:
+        out = mock_analyst(symbol)
+        cache_put(key, out, 3600)
+        return out
 
     ts_code, market = _to_ts_code(symbol)
     out: dict[str, Any] = {"symbol": symbol}
@@ -721,6 +749,11 @@ def spot(symbol: str):
     if cached is not None:
         return cached
 
+    if MOCK_MODE:
+        out = mock_spot(symbol)
+        cache_put(key, out, 30)
+        return out
+
     ts_code, market = _to_ts_code(symbol)
     start = (date.today() - timedelta(days=10)).strftime("%Y%m%d")
     end = date.today().strftime("%Y%m%d")
@@ -774,3 +807,61 @@ def spot(symbol: str):
     }
     cache_put(key, out, 30)
     return out
+
+@app.get("/benchmark/klines", response_model=list[Kline])
+def benchmark_klines(
+    index: str = Query("csi300", description="csi300 | star50 | csi500"),
+    start: str = Query("20230101"),
+    end: str | None = Query(None),
+):
+    """Index benchmark klines for backtest comparison."""
+    end = end or date.today().strftime("%Y%m%d")
+    start, end = _date(start), _date(end)
+    if index not in BENCHMARKS:
+        raise HTTPException(400, f"unknown index {index}")
+    ts_code, _name = BENCHMARKS[index]
+    key = f"bench:{index}:{start}:{end}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    if MOCK_MODE:
+        rows = mock_klines(ts_code, start, end)
+        cache_put(key, rows, 3600)
+        return rows
+
+    try:
+        df = _with_retries(
+            _pro.index_daily,
+            ts_code=ts_code,
+            start_date=start,
+            end_date=end,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"tushare index error: {e}") from e
+
+    if df is None or df.empty:
+        cache_put(key, [], 3600)
+        return []
+
+    df = df.sort_values("trade_date")
+    rows = [
+        {
+            "date": f"{d[:4]}-{d[4:6]}-{d[6:]}",
+            "open": float(r.open),
+            "high": float(r.high),
+            "low": float(r.low),
+            "close": float(r.close),
+            "volume": float(r.vol),
+        }
+        for r in df.itertuples()
+        for d in [str(r.trade_date)]
+    ]
+    cache_put(key, rows, seconds_until_next_trading_close())
+    return rows
+
+
+@app.get("/benchmarks")
+def list_benchmarks():
+    return [{"id": k, "ts_code": v[0], "name": v[1]} for k, v in BENCHMARKS.items()]
+

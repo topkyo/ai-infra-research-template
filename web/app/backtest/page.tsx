@@ -39,6 +39,7 @@ export default function BacktestPage() {
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [rebalance, setRebalance] = useState(10);
   const [maxPositions, setMaxPositions] = useState(6);
+  const [benchmarkIndex, setBenchmarkIndex] = useState("csi300");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BacktestResult | null>(null);
@@ -73,6 +74,7 @@ export default function BacktestPage() {
           endDate,
           rebalanceEveryNDays: rebalance,
           maxPositions,
+          benchmarkIndex,
           startCash: 1_000_000,
           feeBps: 10,
         }),
@@ -146,6 +148,14 @@ export default function BacktestPage() {
           <input type="number" min={1} max={20} value={maxPositions}
             onChange={(e) => setMaxPositions(+e.target.value)} />
         </label>
+        <label className="field">
+          <span>基准指数</span>
+          <select value={benchmarkIndex} onChange={(e) => setBenchmarkIndex(e.target.value)}>
+            <option value="csi300">沪深300</option>
+            <option value="star50">科创50</option>
+            <option value="csi500">中证500</option>
+          </select>
+        </label>
         <button onClick={run} disabled={loading}>
           {loading ? "运行中…" : "运行回测"}
         </button>
@@ -197,12 +207,22 @@ export default function BacktestPage() {
             <Kpi label="最大回撤" value={`${result.stats.maxDrawdownPct.toFixed(2)}%`} pos={false} />
             <Kpi label="夏普" value={result.stats.sharpe.toFixed(2)} pos={result.stats.sharpe >= 0} />
             <Kpi label="交易次数" value={result.stats.trades.toString()} />
+            {result.stats.excessReturnPct != null && (
+              <Kpi
+                label="超额收益(vs基准)"
+                value={`${result.stats.excessReturnPct.toFixed(2)}%`}
+                pos={result.stats.excessReturnPct >= 0}
+              />
+            )}
           </div>
 
           <h2 className="subheading">权益曲线</h2>
           <div className="card chart-card">
             <ResponsiveContainer>
-              <LineChart data={result.equityCurve.map((b) => ({ date: b.date, equity: b.equity }))}>
+              <LineChart data={result.equityCurve.map((b) => {
+                const bench = result.benchmark?.equityCurve.find((x) => x.date === b.date);
+                return { date: b.date, equity: b.equity, benchmark: bench?.equity };
+              })}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                 <XAxis dataKey="date" stroke="#8b96a8" minTickGap={40} />
                 <YAxis stroke="#8b96a8" domain={["auto", "auto"]} />
@@ -210,7 +230,10 @@ export default function BacktestPage() {
                   contentStyle={{ background: "#131a26", border: "1px solid #1f2937" }}
                   formatter={(v: number) => v.toFixed(0)}
                 />
-                <Line type="monotone" dataKey="equity" stroke="#7cf0a0" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="equity" name="策略" stroke="#7cf0a0" dot={false} strokeWidth={2} />
+                {result.benchmark && (
+                  <Line type="monotone" dataKey="benchmark" name={result.benchmark.name} stroke="#6b9dff" dot={false} strokeWidth={1.5} strokeDasharray="4 4" />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>

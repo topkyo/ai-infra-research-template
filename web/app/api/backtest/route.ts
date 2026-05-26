@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { loadEntries } from "@/lib/universe";
-import { fetchKlines, fetchFundamental } from "@/lib/pyserver";
+import { fetchBenchmarkKlines, fetchKlines, fetchFundamental } from "@/lib/pyserver";
 import { runBacktest, type BacktestConfig, type SymbolSeries } from "@/lib/backtest";
 import { mapPool } from "@/lib/concurrent";
 import { saveBacktestResult } from "@/lib/cache";
@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as Partial<BacktestConfig> & {
     startDate: string;
     endDate: string;
+    benchmarkIndex?: string;
   };
 
   const cfg: BacktestConfig = {
@@ -85,8 +86,24 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const result = await runBacktest(series, cfg, (p) => {
-          send({ type: "progress", ...p });
+        const benchmarkIndex = body.benchmarkIndex ?? "csi300";
+        let benchmarkOpt: { id: string; name: string; klines: import("@/lib/pyserver").Kline[] } | undefined;
+        try {
+          const benchKlines = await fetchBenchmarkKlines(benchmarkIndex, aksStart, aksEnd);
+          if (benchKlines.length >= 20) {
+            benchmarkOpt = {
+              id: benchmarkIndex,
+              name: benchmarkIndex === "star50" ? "科创50" : benchmarkIndex === "csi500" ? "中证500" : "沪深300",
+              klines: benchKlines,
+            };
+          }
+        } catch {
+          send({ type: "log", message: `benchmark ${benchmarkIndex} unavailable, skipping` });
+        }
+
+        const result = await runBacktest(series, cfg, {
+          onProgress: (p) => send({ type: "progress", ...p }),
+          benchmark: benchmarkOpt,
         });
         const stored = saveBacktestResult(result);
         send({ type: "log", message: `stored backtest ${stored.id}` });

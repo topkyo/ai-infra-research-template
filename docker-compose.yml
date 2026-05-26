@@ -1,0 +1,33 @@
+services:
+  pyserver:
+    build:
+      context: ./pyserver
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-mock}
+    volumes:
+      - pyserver-cache:/app/cache-data
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-opencode-go}
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-mock}
+      OPENCODE_GO_BASE_URL: ${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/go/v1}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      LLM_MODEL_BACKTEST: ${LLM_MODEL_BACKTEST:-deepseek-v4-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      PYSERVER_URL: http://pyserver:8001
+      HYBRID_LLM_TOP_K: ${HYBRID_LLM_TOP_K:-20}
+    depends_on:
+      - pyserver
+
+volumes:
+  pyserver-cache:

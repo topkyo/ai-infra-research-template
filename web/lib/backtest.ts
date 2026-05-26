@@ -41,6 +41,21 @@ export interface BacktestResult {
     maxDrawdownPct: number;
     sharpe: number;
     trades: number;
+    excessReturnPct?: number;
+  };
+  benchmark?: BenchmarkResult;
+}
+
+export interface BenchmarkResult {
+  id: string;
+  name: string;
+  equityCurve: Array<{ date: string; equity: number }>;
+  stats: {
+    totalReturnPct: number;
+    cagrPct: number;
+    maxDrawdownPct: number;
+    sharpe: number;
+    trades: number;
   };
 }
 
@@ -70,6 +85,57 @@ export type Progress =
   | { phase: "signals"; done: number; total: number }
   | { phase: "simulating"; done: number; total: number };
 
+
+function computeStatsFromEquities(equities: number[], trades = 0) {
+  const start = equities[0];
+  const end = equities[equities.length - 1];
+  const totalReturnPct = (end / start - 1) * 100;
+  const years = equities.length / 252;
+  const cagrPct = (Math.pow(end / start, 1 / Math.max(years, 1 / 252)) - 1) * 100;
+  let peak = start;
+  let maxDD = 0;
+  for (const e of equities) {
+    peak = Math.max(peak, e);
+    maxDD = Math.min(maxDD, e / peak - 1);
+  }
+  const rets: number[] = [];
+  for (let i = 1; i < equities.length; i++) {
+    rets.push(equities[i] / equities[i - 1] - 1);
+  }
+  const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
+  const variance = rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1);
+  const std = Math.sqrt(variance);
+  const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
+  return { totalReturnPct, cagrPct, maxDrawdownPct: maxDD * 100, sharpe, trades };
+}
+
+function computeBenchmarkResult(
+  dates: string[],
+  klines: Kline[],
+  startCash: number,
+  meta: { id: string; name: string },
+  strategyTotalReturnPct: number,
+): BenchmarkResult | undefined {
+  const byDate = indexByDate(klines);
+  const first = byDate.get(dates[0]);
+  if (!first || first.close <= 0) return undefined;
+  const units = startCash / first.close;
+  let lastPx = first.close;
+  const equityCurve = dates.map((d) => {
+    const k = byDate.get(d);
+    if (k) lastPx = k.close;
+    return { date: d, equity: units * lastPx };
+  });
+  const stats = computeStatsFromEquities(equityCurve.map((b) => b.equity));
+  return {
+    id: meta.id,
+    name: meta.name,
+    equityCurve,
+    stats,
+    excessReturnPct: strategyTotalReturnPct - stats.totalReturnPct,
+  } as BenchmarkResult & { excessReturnPct?: number };
+}
+
 export type Scorer = (
   snapshots: SymbolSnapshot[],
   opts: { asOf: string; mode: "backtest" },
@@ -79,6 +145,7 @@ export interface RunBacktestOptions {
   onProgress?: (p: Progress) => void;
   /** Override the LLM scorer — used by tests to inject deterministic signals. */
   scorer?: Scorer;
+  benchmark?: { id: string; name: string; klines: Kline[] };
 }
 
 export async function runBacktest(
@@ -234,17 +301,37 @@ export async function runBacktest(
   const std = Math.sqrt(variance);
   const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
 
+  const stats: BacktestResult["stats"] = {
+    totalReturnPct,
+    cagrPct,
+    maxDrawdownPct: maxDD * 100,
+    sharpe,
+    trades: trades.length,
+  };
+
+  let benchmark: BenchmarkResult | undefined;
+  if (opts.benchmark) {
+    const bench = computeBenchmarkResult(
+      dates,
+      opts.benchmark.klines,
+      cfg.startCash,
+      { id: opts.benchmark.id, name: opts.benchmark.name },
+      totalReturnPct,
+    );
+    if (bench) {
+      benchmark = bench;
+      stats.excessReturnPct = bench.stats.totalReturnPct != null
+        ? totalReturnPct - bench.stats.totalReturnPct
+        : undefined;
+    }
+  }
+
   return {
     config: cfg,
     equityCurve,
     trades,
     signalsByDate,
-    stats: {
-      totalReturnPct,
-      cagrPct,
-      maxDrawdownPct: maxDD * 100,
-      sharpe,
-      trades: trades.length,
-    },
+    stats,
+    benchmark,
   };
 }

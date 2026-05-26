@@ -10,11 +10,7 @@
 //   5. `DEEPSEEK_MODEL_BACKTEST` overrides the model for backtest sweeps —
 //      default to v4-flash there to halve token spend on large windows.
 import { cached } from "./cache";
-
-const API_KEY = process.env.DEEPSEEK_API_KEY;
-const BASE_URL = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
-const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
-const BACKTEST_MODEL = process.env.DEEPSEEK_MODEL_BACKTEST ?? "deepseek-v4-flash";
+import { llmApiKeyConfigured, resolveLlmConfig } from "./llm/config";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -29,17 +25,46 @@ export interface ChatOptions {
   bypassCache?: boolean;
 }
 
+function extractMessageContent(message: Record<string, unknown> | undefined): string {
+  if (!message) return "";
+  const content = message.content;
+  if (typeof content === "string" && content.trim()) return content;
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => (typeof part === "object" && part && "text" in part ? String((part as { text?: string }).text ?? "") : ""))
+      .join("")
+      .trim();
+    if (text) return text;
+  }
+  const reasoning = message.reasoning_content;
+  if (typeof reasoning === "string" && reasoning.trim()) return reasoning;
+  return "";
+}
+
 export async function chat(
   messages: ChatMessage[],
   opts: ChatOptions = {},
 ): Promise<string> {
-  if (!API_KEY) throw new Error("DEEPSEEK_API_KEY is not set");
-  const model = opts.model ?? MODEL;
+  const cfg = resolveLlmConfig();
+  if (!llmApiKeyConfigured(cfg)) {
+    throw new Error(
+      cfg.provider === "opencode-go"
+        ? "OPENCODE_GO_API_KEY is not set"
+        : "DEEPSEEK_API_KEY is not set",
+    );
+  }
+  const model = opts.model ?? cfg.model;
   const temperature = opts.temperature ?? 0.2;
   const responseFormat = opts.responseFormat ?? "text";
   const ttl = opts.ttlSeconds ?? 12 * 3600;
 
-  const cacheParts = { model, temperature, responseFormat, messages };
+  const cacheParts = {
+    provider: cfg.provider,
+    model,
+    temperature,
+    responseFormat,
+    messages,
+  };
   const doFetch = async () => {
     const body: Record<string, unknown> = {
       model,
@@ -50,21 +75,21 @@ export async function chat(
     if (responseFormat === "json_object") {
       body.response_format = { type: "json_object" };
     }
-    const r = await fetch(`${BASE_URL}/chat/completions`, {
+    const r = await fetch(cfg.chatCompletionsUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${cfg.apiKey}`,
       },
       body: JSON.stringify(body),
     });
     if (!r.ok) {
-      throw new Error(`deepseek ${r.status}: ${await r.text()}`);
+      throw new Error(`${cfg.provider} ${r.status}: ${await r.text()}`);
     }
     const j = (await r.json()) as {
-      choices: { message: { content: string } }[];
+      choices?: { message?: Record<string, unknown> }[];
     };
-    return j.choices[0]?.message?.content ?? "";
+    return extractMessageContent(j.choices?.[0]?.message);
   };
 
   if (opts.bypassCache) return doFetch();
@@ -122,7 +147,7 @@ PEG 显著恶化、或主题景气度反转、或价格跌破关键均线且伴�
 不要输出任何其他文本。`;
 
 /** Score a batch of symbols in ONE DeepSeek call (token-efficient). */
-export async function scoreSymbols(
+export async function scoreSymbolsLlm(
   snapshots: SymbolSnapshot[],
   opts: { asOf?: string; bypassCache?: boolean; mode?: "live" | "backtest" } = {},
 ): Promise<Signal[]> {
@@ -150,7 +175,7 @@ export async function scoreSymbols(
       { role: "user", content: JSON.stringify(userPayload) },
     ],
     {
-      model: opts.mode === "backtest" ? BACKTEST_MODEL : MODEL,
+      model: opts.mode === "backtest" ? resolveLlmConfig().backtestModel : resolveLlmConfig().model,
       responseFormat: "json_object",
       temperature: 0.2,
       bypassCache: opts.bypassCache,
@@ -164,3 +189,5 @@ export async function scoreSymbols(
     return [];
   }
 }
+
+export { scoreSymbolsHybrid as scoreSymbols } from "./scoring/hybrid";

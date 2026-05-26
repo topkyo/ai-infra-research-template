@@ -97,3 +97,18 @@ export interface Spot {
   volume?: number;
   turnover?: number;
 }
+
+
+export function fetchBenchmarkKlines(
+  index = "csi300",
+  start = "20230101",
+  end?: string,
+) {
+  const params: Record<string, string> = { index, start };
+  if (end) params.end = end;
+  return get<Kline[]>("/benchmark/klines", params);
+}
+
+export function fetchBenchmarks() {
+  return get<Array<{ id: string; ts_code: string; name: string }>>("/benchmarks", {});
+}

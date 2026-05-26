@@ -96,3 +96,16 @@ test("throws when window has too few aligned trading days", async () => {
   const tinyCfg = { ...cfg, startDate: "2025-12-29", endDate: "2025-12-31" };
   await assert.rejects(() => runBacktest(makeSeries(), tinyCfg, { scorer }), /aligned/i);
 });
+
+
+test("runBacktest attaches benchmark curve when provided", async () => {
+  const benchCloses = Array.from({ length: 80 }, (_, i) => 3000 + i * 2);
+  const benchKlines = makeKlines("2025-01-01", benchCloses);
+  const r = await runBacktest(makeSeries(), cfg, {
+    scorer,
+    benchmark: { id: "csi300", name: "沪深300", klines: benchKlines },
+  });
+  assert.ok(r.benchmark);
+  assert.equal(r.benchmark!.equityCurve.length, r.equityCurve.length);
+  assert.ok(typeof r.stats.excessReturnPct === "number");
+});
