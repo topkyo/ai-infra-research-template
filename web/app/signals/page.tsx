@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { scoreSymbols, type SymbolSnapshot } from "@/lib/deepseek";
+import { mapPool } from "@/lib/concurrent";
 import { fetchKlines, fetchFundamental, fetchSpot } from "@/lib/pyserver";
 import { SITE_EYEBROW } from "@/lib/site";
 import { loadEntries } from "@/lib/universe";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const LOAD_CONCURRENCY = Number(process.env.SIGNALS_LOAD_CONCURRENCY ?? 6);
 
 type LiveSnapshot = SymbolSnapshot & { spotPrice?: number };
 
@@ -23,30 +27,28 @@ async function loadSignals() {
     return d.toISOString().slice(0, 10).replaceAll("-", "");
   })();
 
-  const snapshots: LiveSnapshot[] = await Promise.all(
-    universe.map(async (e) => {
-      const [klines, fund, spot] = await Promise.all([
-        fetchKlines(e.symbol, start).catch(() => []),
-        fetchFundamental(e.symbol).catch(() => undefined),
-        fetchSpot(e.symbol).catch(() => undefined),
-      ]);
-      return {
-        symbol: e.symbol,
-        name: e.name,
-        theme: e.theme,
-        spotPrice: spot?.price,
-        closes: klines.map((k) => k.close),
-        fundamental: fund
-          ? {
-              pe_ttm: fund.pe_ttm,
-              pb: fund.pb,
-              market_cap: fund.market_cap,
-              profit_yoy: fund.profit_yoy,
-            }
-          : undefined,
-      };
-    }),
-  );
+  const snapshots: LiveSnapshot[] = await mapPool(universe, LOAD_CONCURRENCY, async (e) => {
+    const [klines, fund, spot] = await Promise.all([
+      fetchKlines(e.symbol, start).catch(() => []),
+      fetchFundamental(e.symbol).catch(() => undefined),
+      fetchSpot(e.symbol).catch(() => undefined),
+    ]);
+    return {
+      symbol: e.symbol,
+      name: e.name,
+      theme: e.theme,
+      spotPrice: spot?.price,
+      closes: klines.map((k) => k.close),
+      fundamental: fund
+        ? {
+            pe_ttm: fund.pe_ttm,
+            pb: fund.pb,
+            market_cap: fund.market_cap,
+            profit_yoy: fund.profit_yoy,
+          }
+        : undefined,
+    };
+  });
 
   const usable = snapshots.filter((s) => s.closes.length >= 10);
   const signals = await scoreSymbols(usable);

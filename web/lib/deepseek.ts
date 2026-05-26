@@ -65,6 +65,8 @@ export async function chat(
     responseFormat,
     messages,
   };
+  const llmTimeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? 120_000);
+
   const doFetch = async () => {
     const body: Record<string, unknown> = {
       model,
@@ -75,14 +77,27 @@ export async function chat(
     if (responseFormat === "json_object") {
       body.response_format = { type: "json_object" };
     }
-    const r = await fetch(cfg.chatCompletionsUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), llmTimeoutMs);
+    let r: Response;
+    try {
+      r = await fetch(cfg.chatCompletionsUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        throw new Error(`${cfg.provider} timed out after ${llmTimeoutMs}ms`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
     if (!r.ok) {
       throw new Error(`${cfg.provider} ${r.status}: ${await r.text()}`);
     }
