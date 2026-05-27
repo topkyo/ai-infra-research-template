@@ -9,7 +9,7 @@ test("resolveLlmConfig picks opencode-go when LLM_PROVIDER set", async () => {
   const cfg = resolveLlmConfig();
   assert.equal(cfg.provider, "opencode-go");
   assert.equal(cfg.chatCompletionsUrl, "https://opencode.ai/zen/go/v1/chat/completions");
-  assert.equal(cfg.model, "deepseek-v4-pro");
+  assert.equal(cfg.model, "deepseek-v4-flash");
   delete process.env.LLM_PROVIDER;
   delete process.env.OPENCODE_GO_API_KEY;
   delete process.env.OPENCODE_GO_BASE_URL;

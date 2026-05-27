@@ -10,6 +10,11 @@ export const maxDuration = 300;
 const LOAD_CONCURRENCY = Number(process.env.SIGNALS_LOAD_CONCURRENCY ?? 3);
 const SIGNALS_PYSERVER_TIMEOUT_MS = Number(process.env.SIGNALS_PYSERVER_TIMEOUT_MS ?? 120_000);
 const SIGNALS_FUNDAMENTAL_TIMEOUT_MS = Number(process.env.SIGNALS_FUNDAMENTAL_TIMEOUT_MS ?? 8_000);
+const SIGNALS_LLM_SCORE_BATCH_SIZE = Number(
+  process.env.SIGNALS_LLM_SCORE_BATCH_SIZE
+  ?? process.env.LLM_SCORE_BATCH_SIZE
+  ?? 20,
+);
 
 type LiveSnapshot = SymbolSnapshot & { dataErrors?: string[] };
 
@@ -82,7 +87,10 @@ export async function POST(_req: NextRequest) {
         }
 
         send({ type: "progress", phase: "scoring", done: 0, total: snapshots.length });
-        const signals = await scoreSymbols(snapshots);
+        const signals = await scoreSymbols(snapshots, {
+          batchSize: SIGNALS_LLM_SCORE_BATCH_SIZE,
+          onBatchProgress: (done, total) => send({ type: "progress", phase: "scoring", done, total }),
+        });
         send({ type: "progress", phase: "scoring", done: snapshots.length, total: snapshots.length });
         const signalBySymbol = new Map(signals.map((signal) => [signal.symbol, signal]));
         const snapshotBySymbol = new Map(snapshots.map((snapshot) => [snapshot.symbol, snapshot]));

@@ -37,7 +37,7 @@ function resolveProvider(): LlmProvider {
 export function resolveLlmConfig(): LlmConfig {
   const provider = resolveProvider();
   const model =
-    process.env.LLM_MODEL ?? process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+    process.env.LLM_MODEL ?? process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash";
   const backtestModel =
     process.env.LLM_MODEL_BACKTEST
     ?? process.env.DEEPSEEK_MODEL_BACKTEST
