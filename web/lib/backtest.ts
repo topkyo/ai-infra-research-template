@@ -186,15 +186,18 @@ export async function runBacktest(
   const batchesPerDate = Math.max(1, Math.ceil(series.length / backtestBatchSize));
   const totalSignalUnits = rebalanceDates.length * batchesPerDate;
   let signalsDone = 0;
+  const inFlightBatches = new Map<string, number>();
   const scorer: Scorer = opts.scorer ?? ((snapshots, scoreOpts) =>
     scoreSymbols(snapshots, {
       ...scoreOpts,
       mode: "backtest",
       batchSize: backtestBatchSize,
       onBatchProgress: (done, total) => {
+        inFlightBatches.set(scoreOpts.asOf, done);
+        const inflight = [...inFlightBatches.values()].reduce((a, b) => a + b, 0);
         onProgress?.({
           phase: "signals",
-          done: signalsDone * batchesPerDate + done,
+          done: signalsDone * batchesPerDate + inflight,
           total: totalSignalUnits,
         });
         onLog?.(`LLM 批次 ${done}/${total}（调仓 ${scoreOpts.asOf}）`);
@@ -218,6 +221,7 @@ export async function runBacktest(
           };
         });
         const sigs = await scorer(snapshots, { asOf: d, mode: "backtest", batchSize: backtestBatchSize });
+        inFlightBatches.delete(d);
         signalsDone++;
         onProgress?.({ phase: "signals", done: signalsDone * batchesPerDate, total: totalSignalUnits });
         return [d, sigs] as const;
