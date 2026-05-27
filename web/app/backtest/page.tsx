@@ -66,6 +66,8 @@ export default function BacktestPage() {
     setResult(null);
     setProgress(null);
     setLogs([]);
+    let gotResult = false;
+    let gotError = false;
     try {
       const r = await fetch("/api/backtest", {
         method: "POST",
@@ -104,12 +106,19 @@ export default function BacktestPage() {
           } else if (evt.type === "log") {
             setLogs((prev) => [...prev, evt.message]);
           } else if (evt.type === "result") {
+            gotResult = true;
             setResult(evt.result);
           } else if (evt.type === "error") {
+            gotError = true;
             setResult(null);
             setError(evt.message);
           }
         }
+      }
+      if (!gotResult && !gotError) {
+        setError(
+          "回测未完成（连接中断或服务超时）。请先缩短日期区间（如 1–3 个月）试跑，或查看 ~/Library/Logs/topkyo-ai-infra/*.log",
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -189,7 +198,13 @@ export default function BacktestPage() {
           </div>
           {logs.length > 0 && (
             <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
-              {logs.map((l, i) => <div key={i}>· {l}</div>)}
+              <div style={{ color: "var(--text)" }}>· {logs[logs.length - 1]}</div>
+              {logs.length > 1 && (
+                <details style={{ marginTop: 6 }}>
+                  <summary>更早日志（{logs.length - 1} 条）</summary>
+                  {logs.slice(0, -1).map((l, i) => <div key={i}>· {l}</div>)}
+                </details>
+              )}
             </div>
           )}
         </div>

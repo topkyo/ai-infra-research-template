@@ -9,7 +9,8 @@ const LOAD_CONCURRENCY = Number(process.env.BACKTEST_LOAD_CONCURRENCY ?? 6);
 const BACKTEST_PYSERVER_TIMEOUT_MS = Number(process.env.BACKTEST_PYSERVER_TIMEOUT_MS ?? 20_000);
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// Long backtests (77 symbols × many rebalance dates × LLM batches) need >5m locally.
+export const maxDuration = 3600;
 
 // NDJSON streaming protocol. Each line is one JSON object, one of:
 //   { type: "progress", phase, done, total }

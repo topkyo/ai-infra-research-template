@@ -168,8 +168,6 @@ export async function runBacktest(
     "BACKTEST_LLM_SCORE_BATCH_SIZE",
     envPositiveInt("LLM_SCORE_BATCH_SIZE", 40),
   );
-  const scorer: Scorer = opts.scorer ?? ((snapshots, scoreOpts) =>
-    scoreSymbols(snapshots, { ...scoreOpts, batchSize: backtestBatchSize }));
   const dates = alignedTradingDates(series).filter(
     (d) => d >= cfg.startDate && d <= cfg.endDate,
   );
@@ -185,10 +183,26 @@ export async function runBacktest(
   // only on price history <= D, never on what we held — independent calls.
   // Cached entries return instantly; uncached fire concurrently (bounded).
   const rebalanceDates = dates.filter((_, i) => i % cfg.rebalanceEveryNDays === 0);
+  const batchesPerDate = Math.max(1, Math.ceil(series.length / backtestBatchSize));
+  const totalSignalUnits = rebalanceDates.length * batchesPerDate;
+  let signalsDone = 0;
+  const scorer: Scorer = opts.scorer ?? ((snapshots, scoreOpts) =>
+    scoreSymbols(snapshots, {
+      ...scoreOpts,
+      mode: "backtest",
+      batchSize: backtestBatchSize,
+      onBatchProgress: (done, total) => {
+        onProgress?.({
+          phase: "signals",
+          done: signalsDone * batchesPerDate + done,
+          total: totalSignalUnits,
+        });
+        onLog?.(`LLM 批次 ${done}/${total}（调仓 ${scoreOpts.asOf}）`);
+      },
+    }));
   const signalsByDate: Record<string, Signal[]> = {};
   const CONCURRENCY = envPositiveInt("BACKTEST_SIGNAL_CONCURRENCY", 1);
-  let signalsDone = 0;
-  onProgress?.({ phase: "signals", done: 0, total: rebalanceDates.length });
+  onProgress?.({ phase: "signals", done: 0, total: totalSignalUnits });
   for (let i = 0; i < rebalanceDates.length; i += CONCURRENCY) {
     const slice = rebalanceDates.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
@@ -205,7 +219,7 @@ export async function runBacktest(
         });
         const sigs = await scorer(snapshots, { asOf: d, mode: "backtest", batchSize: backtestBatchSize });
         signalsDone++;
-        onProgress?.({ phase: "signals", done: signalsDone, total: rebalanceDates.length });
+        onProgress?.({ phase: "signals", done: signalsDone * batchesPerDate, total: totalSignalUnits });
         return [d, sigs] as const;
       }),
     );
