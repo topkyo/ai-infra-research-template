@@ -54,7 +54,7 @@ flowchart LR
 - 输出校验：未知代码、缺失代码、重复代码、非法 action 会被拒绝。
 - 数据质量：K 线不足、benchmark 缺失、LLM 超时或异常等硬依赖失败会显式报错，不生成保守 hold。
 - 实时信号：`/signals` 页面由客户端触发 `/api/signals` NDJSON 流式任务，先显示进度；LLM 成功时展示 live/cache 结果，失败时显示“信号不可用”。
-- 股票池刷新：DeepSeek 提议失败时返回 error 且不写股票池文件；正常返回空变更是合法结果，但只有实际新增、移除或改类时才更新 `updated_at`。真实新增仍会逐只通过 pyserver 基本面接口验证，验证失败只拒绝该新增项并列明原因。
+- 股票池刷新：`/api/universe/refresh` 先 **1 次** LLM 审阅整池并提议增删改（`UNIVERSE_REFRESH_LLM_TIMEOUT_MS`），失败则 error 且不写文件；真实新增再逐只 pyserver 验证。只有实际变更时才更新 `updated_at`。
 
 ## LLM 同步任务调优
 
@@ -94,7 +94,8 @@ OpenCode Go / DeepSeek 对大股票池的同步 JSON 生成延迟较高。信号
 | `BACKTEST_LOAD_CONCURRENCY` | `10` | 回测加载 K 线/基本面的并发数 |
 | `BACKTEST_PYSERVER_TIMEOUT_MS` | `60000` | 回测单只 K 线请求超时 |
 | `LLM_SCORE_BATCH_SIZE` | `10` | 其他调用 `scoreSymbols` 时的默认批大小 |
-| `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新单只新增校验超时 |
+| `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` | `900000` | 股票池刷新提议阶段单次 LLM 超时（整池上下文 + pro） |
+| `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新单只新增 pyserver 校验超时 |
 
 底层 `scoreSymbols` 为严格模式：失败即抛错，不合成交易结论。LLM 响应按 prompt 哈希缓存（`web/.cache/web.db`，约 12 小时）；同参数重复跑信号/回测会明显加速。
 

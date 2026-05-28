@@ -3,7 +3,8 @@ import { readUniverse } from "@/lib/universe";
 import { proposeRefresh, applyRefresh } from "@/lib/universe-refresh";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+// proposeRefresh is one full-universe LLM call (same order of magnitude as /api/signals).
+export const maxDuration = 900;
 
 // NDJSON: progress / log / result / error
 export async function POST(_req: NextRequest) {
@@ -15,7 +16,7 @@ export async function POST(_req: NextRequest) {
       };
       try {
         const current = readUniverse();
-        send({ type: "log", message: `当前股票池 ${current.entries.length} 只，请求 DeepSeek 提议变更…` });
+        send({ type: "log", message: `当前股票池 ${current.entries.length} 只，请求 LLM 提议变更…` });
 
         const proposal = await proposeRefresh(current);
         send({

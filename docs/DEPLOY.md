@@ -50,6 +50,7 @@ TUSHARE_TOKEN=your-tushare-token
 MARKET_ENABLE_TUSHARE_SECONDARY=1
 SIGNALS_FUNDAMENTAL_TIMEOUT_MS=8000
 SIGNALS_LLM_MAX_ATTEMPTS=1
+UNIVERSE_REFRESH_LLM_TIMEOUT_MS=900000
 LLM_SCORE_BATCH_SIZE=10
 ```
 
@@ -86,6 +87,7 @@ docker compose down   # 停止
 | 首页无行情 | `docker compose ps`；`curl http://127.0.0.1:8001/health`；确认 `PYSERVER_URL` 指向 pyserver |
 | 信号不可用 / 超时 | `LLM_MODEL`、`SIGNALS_LLM_TIMEOUT_MS`（整池单次，pro 建议 ≥900000）；`docker compose logs web` |
 | 回测失败 / 超时 | `LLM_MODEL_BACKTEST`、`BACKTEST_LLM_TIMEOUT_MS`、`BACKTEST_LLM_SCORE_BATCH_SIZE`、`BACKTEST_SIGNAL_CONCURRENCY`；日志中 `[backtest] fetched` |
+| 刷新股票池超时 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS`（提议阶段单次 LLM，建议 900000） |
 | 其他 LLM 失败 | LLM key、provider、`docker compose logs web` |
 | pyserver 无数据 | `curl http://127.0.0.1:8001/health`；AkShare/BaoStock 网络是否可达；如启用 Tushare 次级源，再检查 `TUSHARE_TOKEN` 权限和积分；`docker compose logs pyserver` |
 | 静态页数据旧 | 是否重新运行 `web/scripts/snapshot.ts` 并提交 `docs/data/` |

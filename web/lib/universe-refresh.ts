@@ -70,12 +70,13 @@ export async function proposeRefresh(
     })),
     distinct_themes: [...new Set(current.entries.map((e) => e.theme))],
   };
+  const timeoutMs = envPositiveInt("UNIVERSE_REFRESH_LLM_TIMEOUT_MS", 900_000);
   const raw = await chat(
     [
       { role: "system", content: CURATOR_SYSTEM },
       { role: "user", content: JSON.stringify(userPayload) },
     ],
-    { responseFormat: "json_object", temperature: 0.3, bypassCache: true },
+    { responseFormat: "json_object", temperature: 0.3, bypassCache: true, timeoutMs },
   );
   const parsed = JSON.parse(raw) as Partial<RefreshProposal>;
   return {
