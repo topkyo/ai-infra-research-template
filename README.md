@@ -64,9 +64,9 @@ OpenCode Go / DeepSeek 对大股票池的同步 JSON 生成延迟较高。信号
 
 | 行为 | 说明 |
 |---|---|
-| 调用方式 | **整池 1 次** LLM（上游 fork 风格），`batchSize = 股票池数量 |
+| 调用方式 | 对全池 **串行分批** LLM（`SIGNALS_LLM_SCORE_BATCH_SIZE`，默认 `10`） |
 | 模型 | `LLM_MODEL`（示例部署常用 `deepseek-v4-pro`） |
-| 路由时限 | `maxDuration = 900` 秒（15 分钟） |
+| 路由时限 | `maxDuration = 3600` 秒（大池多批 scoring） |
 
 ### 回测（`/api/backtest`）
 
@@ -81,10 +81,11 @@ OpenCode Go / DeepSeek 对大股票池的同步 JSON 生成延迟较高。信号
 
 | 变量 | 默认 | 说明 |
 |---|---:|---|
-| `LLM_MODEL` | `deepseek-v4-pro` | 实时信号整池单次 LLM 模型 |
+| `LLM_MODEL` | `deepseek-v4-pro` | 实时信号 LLM 模型 |
 | `LLM_MODEL_BACKTEST` | `deepseek-v4-flash` | 回测调仓日 LLM 模型 |
-| `SIGNALS_LLM_TIMEOUT_MS` | `900000` | 信号整池单次请求超时（pro + OpenCode 建议 15 分钟） |
-| `SIGNALS_LLM_MAX_ATTEMPTS` | `1` | 信号 LLM 技术重试次数 |
+| `SIGNALS_LLM_SCORE_BATCH_SIZE` | `10` | 信号 scoring 批大小（串行，越小越稳） |
+| `SIGNALS_LLM_TIMEOUT_MS` | `900000` | 信号**单批** LLM 请求超时（pro + OpenCode 建议 15 分钟） |
+| `SIGNALS_LLM_MAX_ATTEMPTS` | `1` | 信号 LLM 技术重试次数（瞬时 500 可试 `2`） |
 | `SIGNALS_LOAD_CONCURRENCY` | `3` | 信号页加载 K 线/基本面的并发数 |
 | `SIGNALS_PYSERVER_TIMEOUT_MS` | `120000` | 信号页单只 K 线请求超时 |
 | `BACKTEST_LLM_SCORE_BATCH_SIZE` | `10` | 回测每个调仓日内 LLM 批大小（越小越稳） |
@@ -142,6 +143,7 @@ npm run dev
 | 生产构建 | `cd web && npm run build` |
 | 刷新股票池 | `cd web && npx tsx scripts/refresh-universe.ts` |
 | 生成静态快照 | `cd web && npx tsx scripts/snapshot.ts` |
+| 本地监控日志 | `./scripts/monitor-dashboard.sh` → `tail -f .monitor/logs/current.log` |
 | 本地预览 docs | `python3 -m http.server 8765 --directory docs` |
 
 不要在同一工作区同时运行 `npm run dev` 和 `npm run build`。

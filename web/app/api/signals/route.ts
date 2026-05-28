@@ -5,12 +5,21 @@ import { fetchKlines, fetchFundamental } from "@/lib/pyserver";
 import { loadEntries, type UniverseEntry } from "@/lib/universe";
 
 export const runtime = "nodejs";
-// One full-universe LLM call with deepseek-v4-pro can exceed 10m on OpenCode Go.
-export const maxDuration = 900;
+// Batched scoring: ~ceil(pool/batchSize) serial LLM calls; allow up to ~1h on large pools.
+export const maxDuration = 3600;
+
+function envPositiveInt(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
 
 const LOAD_CONCURRENCY = Number(process.env.SIGNALS_LOAD_CONCURRENCY ?? 3);
 const SIGNALS_PYSERVER_TIMEOUT_MS = Number(process.env.SIGNALS_PYSERVER_TIMEOUT_MS ?? 120_000);
 const SIGNALS_FUNDAMENTAL_TIMEOUT_MS = Number(process.env.SIGNALS_FUNDAMENTAL_TIMEOUT_MS ?? 8_000);
+const SIGNALS_LLM_SCORE_BATCH_SIZE = envPositiveInt(
+  "SIGNALS_LLM_SCORE_BATCH_SIZE",
+  envPositiveInt("LLM_SCORE_BATCH_SIZE", 10),
+);
 
 type LiveSnapshot = SymbolSnapshot & { dataErrors?: string[] };
 
@@ -83,9 +92,8 @@ export async function POST(_req: NextRequest) {
         }
 
         send({ type: "progress", phase: "scoring", done: 0, total: snapshots.length });
-        // Upstream-style: entire universe in one prompt / one LLM call (uses LLM_MODEL).
         const signals = await scoreSymbols(snapshots, {
-          batchSize: snapshots.length,
+          batchSize: SIGNALS_LLM_SCORE_BATCH_SIZE,
           onBatchProgress: (done, total) => send({ type: "progress", phase: "scoring", done, total }),
         });
         send({ type: "progress", phase: "scoring", done: snapshots.length, total: snapshots.length });

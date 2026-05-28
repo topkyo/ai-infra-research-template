@@ -28,8 +28,9 @@ LLM_MODEL=deepseek-v4-pro
 LLM_MODEL_BACKTEST=deepseek-v4-flash
 PYSERVER_URL=http://pyserver:8001
 
-# Live signals: one LLM call for the full universe (~15m for pro on OpenCode Go).
+# Live signals: serial batched LLM scoring (SIGNALS_LLM_SCORE_BATCH_SIZE, default 10).
 SIGNALS_LLM_TIMEOUT_MS=900000
+SIGNALS_LLM_SCORE_BATCH_SIZE=10
 SIGNALS_LOAD_CONCURRENCY=3
 SIGNALS_PYSERVER_TIMEOUT_MS=120000
 
@@ -85,7 +86,7 @@ docker compose down   # 停止
 | 现象 | 检查 |
 |---|---|
 | 首页无行情 | `docker compose ps`；`curl http://127.0.0.1:8001/health`；确认 `PYSERVER_URL` 指向 pyserver |
-| 信号不可用 / 超时 | `LLM_MODEL`、`SIGNALS_LLM_TIMEOUT_MS`（整池单次，pro 建议 ≥900000）；`docker compose logs web` |
+| 信号不可用 / 超时 | `LLM_MODEL`、`SIGNALS_LLM_SCORE_BATCH_SIZE`（默认 10，可减小以提高稳定性）、`SIGNALS_LLM_TIMEOUT_MS`（单批，pro 建议 ≥900000）；`docker compose logs web` |
 | 回测失败 / 超时 | `LLM_MODEL_BACKTEST`、`BACKTEST_LLM_TIMEOUT_MS`、`BACKTEST_LLM_SCORE_BATCH_SIZE`、`BACKTEST_SIGNAL_CONCURRENCY`；日志中 `[backtest] fetched` |
 | 刷新股票池超时 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS`（提议阶段单次 LLM，建议 900000） |
 | 其他 LLM 失败 | LLM key、provider、`docker compose logs web` |

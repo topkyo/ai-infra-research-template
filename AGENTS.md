@@ -39,7 +39,7 @@ Copy `pyserver/env.example` to `pyserver/.env` and set `TUSHARE_TOKEN`. Copy `we
 
 **LLM workflows (do not drift from README):**
 
-- **Live signals** (`web/app/api/signals/route.ts`): one LLM call for the full universe (`batchSize = pool size`), `LLM_MODEL`, `SIGNALS_LLM_TIMEOUT_MS` (900000 for pro), route `maxDuration = 900`.
+- **Live signals** (`web/app/api/signals/route.ts`): serial batched LLM via `SIGNALS_LLM_SCORE_BATCH_SIZE` (default 10), `LLM_MODEL`, `SIGNALS_LLM_TIMEOUT_MS` (900000 per batch for pro), route `maxDuration = 3600`.
 - **Backtest** (`web/app/api/backtest/route.ts`): per rebalance day, batched LLM inside each day, `BACKTEST_SIGNAL_CONCURRENCY` parallel days, `LLM_MODEL_BACKTEST`, route `maxDuration = 3600`.
 - **Universe refresh** (`web/app/api/universe/refresh/route.ts`): one LLM `proposeRefresh` call, `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` (900000 for pro), route `maxDuration = 900`.
 - Strict mode: no synthetic hold on LLM failure; see README “LLM 同步任务调优”.

@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 test("resolveLlmConfig picks opencode-go when LLM_PROVIDER set", async () => {
+  delete process.env.LLM_MODEL;
+  delete process.env.DEEPSEEK_MODEL;
   process.env.LLM_PROVIDER = "opencode-go";
   process.env.OPENCODE_GO_API_KEY = "sk-test-key";
   process.env.OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
