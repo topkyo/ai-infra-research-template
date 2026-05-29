@@ -58,7 +58,7 @@ def _strip_proxy_env() -> None:
         return
     os.environ.setdefault(
         "NO_PROXY",
-        "localhost,127.0.0.1,::1,push2.eastmoney.com,push2his.eastmoney.com,.eastmoney.com",
+        "localhost,127.0.0.1,::1,push2.eastmoney.com,push2his.eastmoney.com,.eastmoney.com,hq.sinajs.cn,.sinajs.cn",
     )
 
 
@@ -93,21 +93,39 @@ DB_PATH = Path(os.environ.get("PYSERVER_CACHE_DB", Path(__file__).parent / "cach
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 NEGATIVE_CACHE = {"__negative_cache__": True}
 
-# Bypass broken shell proxies (e.g. 127.0.0.1:7890) for Eastmoney spot quotes.
-_EM_SESSION: requests.Session | None = None
+# Bypass broken shell proxies (e.g. 127.0.0.1:7890) for market quote HTTP clients.
+_MARKET_HTTP_SESSION: requests.Session | None = None
+_QUOTE_SOURCE_KEY = "_quote_source"
+PUSH2_UNAVAILABLE_SINA_WARNING = (
+    "Eastmoney push2 unavailable; using Sina hq.sinajs realtime quote"
+)
 
 
-def _requests_get_no_proxy(url: str, *, params: dict[str, Any], timeout: float) -> requests.Response:
-    global _EM_SESSION
-    if _EM_SESSION is None:
-        _EM_SESSION = requests.Session()
-        _EM_SESSION.trust_env = False
+def _market_http_session() -> requests.Session:
+    global _MARKET_HTTP_SESSION
+    if _MARKET_HTTP_SESSION is None:
+        _MARKET_HTTP_SESSION = requests.Session()
+        _MARKET_HTTP_SESSION.trust_env = False
         if MARKET_HTTP_PROXY:
-            _EM_SESSION.proxies = {
+            _MARKET_HTTP_SESSION.proxies = {
                 "http": MARKET_HTTP_PROXY,
                 "https": MARKET_HTTP_PROXY,
             }
-    return _EM_SESSION.get(url, params=params, timeout=timeout)
+    return _MARKET_HTTP_SESSION
+
+
+def _market_http_get(
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 3,
+) -> requests.Response:
+    return _market_http_session().get(url, params=params, headers=headers, timeout=timeout)
+
+
+def _requests_get_no_proxy(url: str, *, params: dict[str, Any], timeout: float) -> requests.Response:
+    return _market_http_get(url, params=params, timeout=timeout)
 
 
 app = FastAPI(title="silicon-civ pyserver", version="0.2.0")
@@ -718,7 +736,78 @@ def _ak_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
         "市盈率-动态": data.get("f162"),
         "市净率": data.get("f167"),
         "换手率": data.get("f168"),
+        _QUOTE_SOURCE_KEY: "akshare_eastmoney",
     }
+    cache_put(key, row, 30)
+    return row
+
+
+def _sina_hq_list_id(market: str, code: str) -> str:
+    return f"{_infer_market_prefix(code)}{code}"
+
+
+def parse_sina_hq_text(text: str, code: str) -> dict[str, Any] | None:
+    """Parse hq.sinajs.cn response: var hq_str_sh600000=\"name,open,prev,price,...\";"""
+    match = re.search(r'="([^"]*)"', text)
+    if not match:
+        return None
+    body = match.group(1).strip()
+    if not body:
+        return None
+    parts = body.split(",")
+    if len(parts) < 4:
+        return None
+    prev_close = _num_or_none(parts[2])
+    price = _num_or_none(parts[3])
+    if price is None:
+        return None
+    change_pct = None
+    if prev_close and prev_close > 0:
+        change_pct = (price - prev_close) / prev_close * 100
+    volume = _num_or_none(parts[8]) if len(parts) > 8 else None
+    turnover = _num_or_none(parts[9]) if len(parts) > 9 else None
+    return {
+        "代码": code,
+        "名称": parts[0] or None,
+        "最新价": price,
+        "涨跌幅": change_pct if change_pct is not None else 0,
+        "成交量": volume or 0,
+        "成交额": turnover or 0,
+    }
+
+
+def _sina_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
+    """Single-symbol realtime quote via Sina hq.sinajs.cn when Eastmoney push2 fails."""
+    if market not in {"sh", "sz", "bj"}:
+        return None
+    code = _compact_code(ts_code)
+    key = f"ak:a:spot:sina:{code}"
+    cached = cache_get(key)
+    if cached is not None:
+        if isinstance(cached, dict) and cached.get("__negative_cache__"):
+            return None
+        return cached
+    list_id = _sina_hq_list_id(market, code)
+    url = f"https://hq.sinajs.cn/list={list_id}"
+    headers = {
+        "Referer": "https://finance.sina.com.cn/",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
+    try:
+        response = _market_http_get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        response.encoding = "gbk"
+        row = parse_sina_hq_text(response.text, code)
+    except Exception:
+        cache_put(key, NEGATIVE_CACHE, 10)
+        return None
+    if row is None:
+        cache_put(key, NEGATIVE_CACHE, 10)
+        return None
+    row[_QUOTE_SOURCE_KEY] = "sina_hq_sinajs"
     cache_put(key, row, 30)
     return row
 
@@ -727,9 +816,24 @@ def _ak_a_spot(ts_code: str, market: str) -> dict[str, Any] | None:
     if market not in {"sh", "sz", "bj"}:
         return None
     try:
-        return _ak_a_spot_rows(ts_code, market)
+        row = _ak_a_spot_rows(ts_code, market)
+        if row is not None:
+            return row
+        return _sina_a_spot_rows(ts_code, market)
     except Exception:
         return None
+
+
+def _spot_api_source_from_row(row: dict[str, Any]) -> str:
+    if row.get(_QUOTE_SOURCE_KEY) == "sina_hq_sinajs":
+        return "sina-hq-realtime"
+    return "eastmoney"
+
+
+def _spot_warnings_from_row(row: dict[str, Any]) -> list[str]:
+    if row.get(_QUOTE_SOURCE_KEY) == "sina_hq_sinajs":
+        return [PUSH2_UNAVAILABLE_SINA_WARNING]
+    return []
 
 
 def _spot_price_from_ak(row: dict[str, Any]) -> float | None:
@@ -1078,7 +1182,9 @@ def analyst(symbol: str):
         price = _spot_price_from_ak(ak_spot)
         if price is not None:
             out["current_price"] = round(price, 3)
-            out["field_sources"]["current_price"] = "akshare_eastmoney"
+            out["field_sources"]["current_price"] = ak_spot.get(_QUOTE_SOURCE_KEY, "akshare_eastmoney")
+            if ak_spot.get(_QUOTE_SOURCE_KEY) == "sina_hq_sinajs":
+                out["warnings"].append(PUSH2_UNAVAILABLE_SINA_WARNING)
         pe_ttm = _num_or_none(_ak_col(pd.Series(ak_spot), "市盈率-动态", "市盈率", "PE"))
     stock_value = _ak_stock_value_row(ts_code)
     if stock_value is not None:
@@ -1283,9 +1389,9 @@ def spot(symbol: str):
                     "change_pct": _spot_change_pct_from_ak(ak_spot) or 0,
                     "volume": _num_or_none(ak_spot.get("成交量")) or 0,
                     "turnover": _num_or_none(ak_spot.get("成交额")) or 0,
-                    "source": "eastmoney",
+                    "source": _spot_api_source_from_row(ak_spot),
                     "fetched_at": datetime.now().isoformat(),
-                    "warnings": [],
+                    "warnings": _spot_warnings_from_row(ak_spot),
                 }
                 cache_put(key, out, 30)
                 return out

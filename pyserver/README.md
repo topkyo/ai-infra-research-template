@@ -10,7 +10,7 @@
 | `GET /fundamental` | 30 秒到 24 小时 | AkShare `stock_value_em` 提供 PE/PB/市值/最近收盘，BaoStock `query_growth_data` 补净利同比；Tushare `daily_basic`/`fina_indicator` 仅显式开启 |
 | `GET /analyst` | 24 小时 | AkShare 研报/盈利预测与 `stock_value_em` 估值优先，Tushare `report_rc` 仅显式开启 |
 | `GET /analysts` | 24 小时 | 批量包装 `GET /analyst`，避免前端逐行请求 |
-| `GET /spot` | 30 秒 | A 股 Eastmoney 单股 quote 优先；不可用时返回 AkShare `stock_value_em` 最近日收盘并带非实时 warning；港股 `ak.stock_hk_hist` |
+| `GET /spot` | 30 秒 | A 股 Eastmoney push2 单股 quote 优先；push2 不可用时尝试新浪 `hq.sinajs.cn` 单股实时；仍失败则返回 AkShare `stock_value_em` 最近日收盘并带非实时 warning；港股 `ak.stock_hk_hist` |
 
 默认缓存文件为 `pyserver/cache.db`；部署时可用 `PYSERVER_CACHE_DB=/path/to/cache.db` 指定持久化路径。
 缓存 key 带 `mock/live` namespace，避免离线 mock 与真实数据污染。
@@ -20,8 +20,8 @@
 `/fundamental`、`/analyst`、`/spot` 会返回数据源元信息：
 
 - `source`: 汇总来源，例如 `akshare_primary`、`akshare+baostock`、`akshare+baostock+tushare`。
-- `field_sources`: 字段级来源，例如 `pe_ttm: akshare_stock_value_em`、`profit_yoy: baostock_growth`。
-- `warnings`: 非硬失败说明，例如免费源缺字段、Tushare 显式次级源关闭、无法计算 implied target、返回的是最近日收盘而不是实时价。
+- `field_sources`: 字段级来源，例如 `current_price: sina_hq_sinajs`、`pe_ttm: akshare_stock_value_em`、`profit_yoy: baostock_growth`。
+- `warnings`: 非硬失败说明，例如 push2 不可用但新浪实时可用、免费源缺字段、Tushare 显式次级源关闭、无法计算 implied target、返回的是最近日收盘而不是实时价。
 
 不要把 AkShare `stock_value_em` 或日线 close 当实时价使用；它只说明 Eastmoney 实时 quote 当前不可用时的最近交易日收盘参考，可能有盘后或 T+1 延迟。
 
