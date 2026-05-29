@@ -9,9 +9,15 @@ LOG_KEEP_DAYS="${MONITOR_LOG_KEEP_DAYS:-7}"
 STATE="${MONITOR_STATE:-$ROOT/.monitor/state.env}"
 WEB_PORT="${WEB_PORT:-3000}"
 PY_PORT="${PY_PORT:-8001}"
-WEB_PID="${WEB_PID:-$(lsof -tiTCP:$WEB_PORT -sTCP:LISTEN 2>/dev/null | head -1)}"
+WEB_PID_FIXED="${WEB_PID:-}"
+WEB_PID="$WEB_PID_FIXED"
 INTERVAL="${MONITOR_INTERVAL:-2}"
 WEB_CWD_MARKER="${MONITOR_WEB_CWD:-$ROOT/web}"
+
+refresh_web_pid() {
+  [ -n "$WEB_PID_FIXED" ] && return
+  WEB_PID="$(lsof -tiTCP:"$WEB_PORT" -sTCP:LISTEN 2>/dev/null | head -1)"
+}
 
 resolve_terminals_dir() {
   if [ -n "${CURSOR_TERMINALS_DIR:-}" ] && [ -d "$CURSOR_TERMINALS_DIR" ]; then
@@ -29,7 +35,7 @@ resolve_terminals_dir() {
     [ -d "$d" ] || continue
     for f in "$d"/*.txt; do
       [ -f "$f" ] || continue
-      if grep -q "$WEB_CWD_MARKER" "$f" 2>/dev/null; then
+      if grep -Fq "$WEB_CWD_MARKER" "$f" 2>/dev/null; then
         printf '%s' "$d"
         return
       fi
@@ -133,7 +139,7 @@ find_next_terminal() {
   [ -d "$TERMINALS_DIR" ] || return 1
   for f in "$TERMINALS_DIR"/*.txt; do
     [ -f "$f" ] || continue
-    grep -q "$WEB_CWD_MARKER" "$f" 2>/dev/null || continue
+    grep -Fq "$WEB_CWD_MARKER" "$f" 2>/dev/null || continue
     grep -qE 'next dev|next-server' "$f" 2>/dev/null || continue
     printf '%s' "$f"
     return 0
@@ -207,6 +213,7 @@ maybe_log_conn() {
 
 write_state() {
   mkdir -p "$LOG_DIR"
+  mkdir -p "$(dirname "$STATE")"
   printf 'kind=%s phase=%s running=%s peak_py=%s llm_waves=%s llm_active=%s log=%s\n' \
     "$RUN_KIND" "$PHASE" "$RUNNING" "$peak_py" "$llm_waves" "$llm_active" \
     "${LOG_DIR}/current.log" >"$STATE"
@@ -250,6 +257,7 @@ start_run() {
 
 resolve_log_file
 ln -sf "$(basename "$LOG")" "$LOG_DIR/current.log"
+refresh_web_pid
 
 log idle "=== started pid=$$ web_pid=${WEB_PID:-none} log_dir=$LOG_DIR keep=${LOG_KEEP_DAYS}d"
 log idle "tail -f $LOG_DIR/current.log"
@@ -260,6 +268,7 @@ reset_run
 
 while true; do
   resolve_log_file
+  refresh_web_pid
   py_est=0 web_est=0 node_ext=0
   read -r py_est web_est node_ext < <(snapshot_connections) || true
   py_est=${py_est:-0}; web_est=${web_est:-0}; node_ext=${node_ext:-0}

@@ -30,6 +30,45 @@ function el(tag, props = {}, children = []) {
   return node;
 }
 
+function firstItems(items, max = 6) {
+  const out = items.slice(0, max);
+  const remaining = items.length - out.length;
+  return remaining > 0 ? `${out.join("；")}；另 ${remaining} 条` : out.join("；");
+}
+
+function itemWarnings(item) {
+  return Array.isArray(item?.warnings) ? item.warnings.filter(Boolean) : [];
+}
+
+function renderSnapshotAlerts({ analyst, signals, backtest }) {
+  const box = $("#snapshot-alerts");
+  box.innerHTML = "";
+  const alerts = [];
+  const analystErrors = (analyst.items ?? [])
+    .filter((item) => item.error)
+    .map((item) => `${item.symbol}: ${item.error}`);
+  const analystWarnings = (analyst.items ?? []).flatMap((item) =>
+    itemWarnings(item).map((warning) => `${item.symbol}: ${warning}`),
+  );
+  const signalWarnings = (signals?.warnings ?? []).filter(Boolean);
+  const backtestWarnings = (backtest?.warnings ?? []).filter(Boolean);
+
+  if (analystErrors.length > 0) alerts.push(["error", "一致预期部分不可用", firstItems(analystErrors)]);
+  if (analystWarnings.length > 0) alerts.push(["warning", "一致预期警告", firstItems(analystWarnings)]);
+  if (signalWarnings.length > 0) alerts.push(["warning", "信号输入警告", firstItems(signalWarnings)]);
+  if (backtestWarnings.length > 0) alerts.push(["warning", "回测输入警告", firstItems(backtestWarnings)]);
+  if (alerts.length === 0) return;
+
+  const list = el("div", { class: "alert-list" });
+  for (const [level, title, body] of alerts) {
+    list.appendChild(el("div", { class: `alert ${level === "error" ? "error" : ""}` }, [
+      el("strong", {}, title),
+      el("span", {}, body),
+    ]));
+  }
+  box.appendChild(list);
+}
+
 // ---------- KPI summary ----------
 function renderKpis({ universe, analyst, signals, backtest, meta }) {
   const grid = $("#kpi-grid");
@@ -101,6 +140,8 @@ function renderUniverse({ universe, analyst }) {
           el("td", {}, [
             el("div", { class: "stock-name" }, e.name),
             e.note ? el("div", { class: "stock-note" }, e.note) : null,
+            a?.error ? el("div", { class: "stock-note data-error" }, a.error) : null,
+            ...itemWarnings(a).map((warning) => el("div", { class: "stock-note data-warning" }, warning)),
           ]),
           el("td", {}, el("span", { class: e.global_supply ? "pill good" : "pill" }, e.global_supply ? "是" : "否")),
           el("td", { class: "num" }, fmt.num(a?.current_price)),
@@ -166,6 +207,9 @@ function renderSignals({ universe, signals }) {
     ]));
   }
   $("#signals-summary").textContent = `${buys} 买入 · ${sells} 卖出`;
+  if ((signals.warnings ?? []).length > 0) {
+    $("#signals-summary").textContent += ` · ${signals.warnings.length} 条输入警告`;
+  }
 }
 
 // ---------- Backtest ----------
@@ -208,6 +252,9 @@ function renderBacktest(bt) {
     ]));
   }
   $("#trades-count").textContent = `共 ${trades.length} 笔（最新在上）`;
+  if ((bt.warnings ?? []).length > 0) {
+    $("#trades-count").textContent += ` · ${bt.warnings.length} 条输入警告`;
+  }
 }
 
 function drawEquityChart(curve, baseline) {
@@ -311,6 +358,7 @@ function drawEquityChart(curve, baseline) {
       loadJson("backtest.json").catch(() => null),
     ]);
     renderKpis({ universe, analyst, signals, backtest, meta });
+    renderSnapshotAlerts({ analyst, signals, backtest });
     renderUniverse({ universe, analyst });
     renderSignals({ universe, signals });
     renderBacktest(backtest);
