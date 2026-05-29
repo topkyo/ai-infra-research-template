@@ -96,9 +96,6 @@ NEGATIVE_CACHE = {"__negative_cache__": True}
 # Bypass broken shell proxies (e.g. 127.0.0.1:7890) for market quote HTTP clients.
 _MARKET_HTTP_SESSION: requests.Session | None = None
 _QUOTE_SOURCE_KEY = "_quote_source"
-PUSH2_UNAVAILABLE_SINA_WARNING = (
-    "Eastmoney push2 unavailable; using Sina hq.sinajs realtime quote"
-)
 
 
 def _market_http_session() -> requests.Session:
@@ -831,8 +828,6 @@ def _spot_api_source_from_row(row: dict[str, Any]) -> str:
 
 
 def _spot_warnings_from_row(row: dict[str, Any]) -> list[str]:
-    if row.get(_QUOTE_SOURCE_KEY) == "sina_hq_sinajs":
-        return [PUSH2_UNAVAILABLE_SINA_WARNING]
     return []
 
 
@@ -1183,8 +1178,6 @@ def analyst(symbol: str):
         if price is not None:
             out["current_price"] = round(price, 3)
             out["field_sources"]["current_price"] = ak_spot.get(_QUOTE_SOURCE_KEY, "akshare_eastmoney")
-            if ak_spot.get(_QUOTE_SOURCE_KEY) == "sina_hq_sinajs":
-                out["warnings"].append(PUSH2_UNAVAILABLE_SINA_WARNING)
         pe_ttm = _num_or_none(_ak_col(pd.Series(ak_spot), "市盈率-动态", "市盈率", "PE"))
     stock_value = _ak_stock_value_row(ts_code)
     if stock_value is not None:

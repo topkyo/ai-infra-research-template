@@ -5,7 +5,6 @@ import unittest
 from unittest.mock import patch
 
 from main import (
-    PUSH2_UNAVAILABLE_SINA_WARNING,
     _QUOTE_SOURCE_KEY,
     _ak_a_spot,
     _spot_api_source_from_row,
@@ -29,10 +28,10 @@ class ParseSinaHqTextTest(unittest.TestCase):
 
 
 class SpotMetadataTest(unittest.TestCase):
-    def test_sina_source_and_warning(self) -> None:
+    def test_sina_source_no_warning(self) -> None:
         row = {"最新价": 1.0, _QUOTE_SOURCE_KEY: "sina_hq_sinajs"}
         self.assertEqual(_spot_api_source_from_row(row), "sina-hq-realtime")
-        self.assertEqual(_spot_warnings_from_row(row), [PUSH2_UNAVAILABLE_SINA_WARNING])
+        self.assertEqual(_spot_warnings_from_row(row), [])
 
     def test_eastmoney_no_warning(self) -> None:
         row = {"最新价": 1.0, _QUOTE_SOURCE_KEY: "akshare_eastmoney"}

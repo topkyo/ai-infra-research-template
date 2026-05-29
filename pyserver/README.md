@@ -21,7 +21,7 @@
 
 - `source`: 汇总来源，例如 `akshare_primary`、`akshare+baostock`、`akshare+baostock+tushare`。
 - `field_sources`: 字段级来源，例如 `current_price: sina_hq_sinajs`、`pe_ttm: akshare_stock_value_em`、`profit_yoy: baostock_growth`。
-- `warnings`: 非硬失败说明，例如 push2 不可用但新浪实时可用、免费源缺字段、Tushare 显式次级源关闭、无法计算 implied target、返回的是最近日收盘而不是实时价。
+- `warnings`: 非硬失败说明，例如免费源缺字段、Tushare 显式次级源关闭、无法计算 implied target、返回的是最近日收盘而不是实时价（新浪/东财实时成功时不写 warnings，来源见 `field_sources`/`source`）。
 
 不要把 AkShare `stock_value_em` 或日线 close 当实时价使用；它只说明 Eastmoney 实时 quote 当前不可用时的最近交易日收盘参考，可能有盘后或 T+1 延迟。
 
