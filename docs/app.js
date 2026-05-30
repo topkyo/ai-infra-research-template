@@ -36,6 +36,22 @@ function firstItems(items, max = 6) {
   return remaining > 0 ? `${out.join("；")}；另 ${remaining} 条` : out.join("；");
 }
 
+function formatBeijingDateTime(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "无";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")} 北京时间`;
+}
+
 function itemWarnings(item) {
   return Array.isArray(item?.warnings) ? item.warnings.filter(Boolean) : [];
 }
@@ -80,8 +96,7 @@ function renderKpis({ universe, analyst, signals, backtest, meta }) {
   const upsideCount = analyst.items.filter((a) => (a.upside_pct ?? 0) > 0).length;
   const buys = (signals?.signals ?? []).filter((s) => s.action === "buy").length;
   const sells = (signals?.signals ?? []).filter((s) => s.action === "sell").length;
-  const stamp = new Date(meta.generated_at);
-  const stampStr = stamp.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  const stampStr = formatBeijingDateTime(meta.generated_at);
 
   const cards = [
     ["股票池", `${universe.entries.length}`, `${themes.size} 个子主题`],
