@@ -10,21 +10,23 @@ if (!fs.existsSync(runtimePath) || !fs.existsSync(chunksDir)) {
 }
 
 const runtime = fs.readFileSync(runtimePath, "utf8");
-const requiresRootChunks = /require\(\s*["']\.\/["']\s*\+\s*__webpack_require__\.u\(chunkId\)\s*\)/.test(runtime);
+const rootChunkRequirePattern = /require\(\s*["']\.\/["']\s*\+\s*(?:__webpack_require__|[A-Za-z_$][\w$]*)\.u\(\s*(?:chunkId|[A-Za-z_$][\w$]*)\s*\)\s*\)/;
+const loadsChunksFromServerRoot = rootChunkRequirePattern.test(runtime);
+const chunkFiles = fs
+  .readdirSync(chunksDir)
+  .filter((name) => /^\d+\.js(?:\.map)?$/.test(name));
 
-if (!requiresRootChunks) {
+if (!loadsChunksFromServerRoot || chunkFiles.length === 0) {
   process.exit(0);
 }
 
-for (const name of fs.readdirSync(chunksDir)) {
-  if (!/^\d+\.js(?:\.map)?$/.test(name)) continue;
+for (const name of chunkFiles) {
   const source = path.join(chunksDir, name);
   const target = path.join(serverDir, name);
   fs.copyFileSync(source, target);
 }
 
-const missing = fs
-  .readdirSync(chunksDir)
+const missing = chunkFiles
   .filter((name) => /^\d+\.js$/.test(name))
   .filter((name) => !fs.existsSync(path.join(serverDir, name)));
 
