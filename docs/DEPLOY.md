@@ -57,6 +57,19 @@ STRICT_LIVE_DATA=1
 
 Tushare 接口权限见 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。
 
+### 真实持仓持久化
+
+`/signals` 的真实持仓模式会读写 Web 容器内的 `/app/data/holdings.local.json`。该文件包含现金、持仓数量和成本价，默认不会提交到 Git，也不会随 Docker volume 自动持久化。若生产环境要保留真实持仓配置，建议在 `docker-compose.yml` 的 `web.volumes` 增加一个受权限保护的 bind mount：
+
+```yaml
+services:
+  web:
+    volumes:
+      - ./private/holdings.local.json:/app/data/holdings.local.json
+```
+
+首次使用可从 `web/data/holdings.example.json` 复制结构，或在 `/signals` 页面粘贴券商持仓表后保存。不要把真实持仓文件放进 `docs/data/` 或提交到公开仓库。
+
 ## 3. 启动服务
 
 ```bash

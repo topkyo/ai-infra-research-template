@@ -4,11 +4,12 @@
 
 This repository is **topkyo**'s **AI infrastructure research dashboard** for Chinese A-share thematic stock analysis (compute, interconnect, cooling, power, IDC, storage, semiconductors).
 
-- `web/`: Next.js 15 App Router frontend, API routes, TypeScript backtests, DeepSeek integration, SQLite cache, and tests.
+- `web/`: Next.js 15 App Router frontend, API routes, TypeScript backtests, DeepSeek/OpenCode Go integration, SQLite cache, local holdings, and tests.
 - `web/app/`: UI pages and route handlers. Key pages include `page.tsx`, `signals/page.tsx`, and `backtest/page.tsx`.
 - `web/lib/`: shared domain logic such as `universe.ts`, `pyserver.ts`, `deepseek.ts`, `backtest.ts`, and `cache.ts`.
 - `web/test/`: Node test-runner TypeScript tests named `*.test.ts`.
 - `web/data/universe.json`: editable stock universe data.
+- `web/data/holdings.example.json`: local holdings example; `web/data/holdings.local.json` is private and ignored.
 - `pyserver/`: FastAPI sidecar for Tushare Pro access and SQLite market-data caching.
 
 ## Build, Test, and Development Commands
@@ -35,18 +36,18 @@ Recent history uses concise imperative commit subjects, for example `Replace aks
 
 ## Security & Configuration Tips
 
-Copy `pyserver/env.example` to `pyserver/.env` and set `TUSHARE_TOKEN`. Copy `web/env.example.txt` to `web/.env.local` and set `OPENCODE_GO_API_KEY` or `DEEPSEEK_API_KEY`, `PYSERVER_URL`, and LLM tuning vars as needed. Keep API keys local only.
+Copy `pyserver/env.example` to `pyserver/.env`; leave `TUSHARE_TOKEN` empty for free live data, or set a real token only when enabling Tushare secondary. Copy `web/env.example.txt` to `web/.env.local` and set `OPENCODE_GO_API_KEY` or `DEEPSEEK_API_KEY`, `PYSERVER_URL`, and LLM tuning vars as needed. Keep API keys and `web/data/holdings.local.json` local only.
 
 **LLM workflows (do not drift from README):**
 
-- **Live signals** (`web/app/api/signals/route.ts`): serial batched LLM via `SIGNALS_LLM_SCORE_BATCH_SIZE` (default 10), `LLM_MODEL`, `SIGNALS_LLM_TIMEOUT_MS` (900000 per batch for pro), route `maxDuration = 3600`.
+- **Live signals** (`web/app/api/signals/route.ts`): portfolio-aware target weights, `mode=real|paper`; real mode requires valid `web/data/holdings.local.json` and returns `setup_required` before market/LLM calls when missing or invalid. Serial batched LLM via `SIGNALS_LLM_SCORE_BATCH_SIZE` (default 10), `LLM_MODEL`, `SIGNALS_LLM_TIMEOUT_MS` (900000 per batch for pro), route `maxDuration = 3600`.
 - **Backtest** (`web/app/api/backtest/route.ts`): per rebalance day, batched LLM inside each day, `BACKTEST_SIGNAL_CONCURRENCY` parallel days, `LLM_MODEL_BACKTEST`, route `maxDuration = 3600`.
 - **Universe refresh** (`web/app/api/universe/refresh/route.ts`): one LLM `proposeRefresh` call, `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` (900000 for pro), route `maxDuration = 900`.
-- Strict mode: no synthetic hold on LLM failure; see README “LLM 同步任务调优”.
+- Strict mode: no synthetic hold or synthetic target weights on LLM failure; see README “LLM 工作流”.
 
 ## 严肃看盘数据完整性规则
 
-- 禁止业务兜底：LLM、API 或关键数据失败时，不得生成 `buy` / `hold` / `sell` 交易结论，不得存回测结果，不得写股票池“无变更成功”。
+- 禁止业务兜底：LLM、API 或关键数据失败时，不得生成实时目标仓位或 `buy` / `hold` / `sell` 回测交易结论，不得存回测结果，不得写股票池“无变更成功”。
 - 禁止静默降级：任何降级都必须在 API/UI 中显式暴露为 `error`、`unavailable` 或 `warning`，并保留可审计原因。
 - 允许技术重试、缓存命中、可审计次级数据源；但这些机制不能合成业务结论，也不能把失败伪装成成功。
 - 股票池刷新只有在真实新增、移除或改类时才更新 `updated_at`；LLM 正常返回空 proposal 可以成功返回，但不得改写文件。

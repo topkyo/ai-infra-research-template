@@ -1,6 +1,6 @@
 // Snapshot the latest webapp results into docs/data/*.json for the static
-// GitHub Pages site. Requires pyserver running and DEEPSEEK_API_KEY set
-// (read from web/.env.local).
+// GitHub Pages site. Requires pyserver running and an LLM API key
+// (OPENCODE_GO_API_KEY or DEEPSEEK_API_KEY, read from web/.env.local).
 //
 // Usage:
 //   cd web && npx tsx scripts/snapshot.ts

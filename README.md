@@ -13,14 +13,14 @@
 |---|---|
 | AI 基建股票池 | 按产业环节维护 A 股主题标的，数据源为 [web/data/universe.json](web/data/universe.json)。 |
 | 行情与一致预期 | FastAPI sidecar 聚合现价、估值、成长、评级和隐含目标参考。 |
-| LLM 策略信号 | 全池生成 `buy` / `hold` / `sell` 信号；失败时显式不可用，不合成伪结论。 |
+| 组合持仓信号 | 结合真实或模拟持仓生成 5-20 个交易日目标仓位；失败时显式不可用，不合成伪结论。 |
 | 严格回测 | 按调仓周期重配，支持基准指数、单边费率、信号缓存和结果存档。 |
 | 静态快照 | 输出 `docs/data/*.json`，用于 GitHub Pages 公开展示最近一次研究快照。 |
 
 ## 产品界面
 
 - `/`：股票池总览，展示主题、现价、一致预期参考、数据来源和刷新入口。
-- `/signals`：流式生成实时 LLM 信号，先展示加载进度，再展示 live/cache 结果或失败原因。
+- `/signals`：流式生成组合持仓信号，支持真实持仓和模拟资金模式，先展示加载进度，再展示目标仓位、调仓差额或失败原因。
 - `/backtest`：配置日期、调仓周期、最大持仓和基准指数，运行严格回测。
 - `docs/`：无需服务端和 API key 的静态快照页面。
 
@@ -55,15 +55,15 @@ scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 - **免费源优先**：A 股行情与基本面优先使用 Eastmoney / AkShare / BaoStock；Tushare 默认关闭，只在 `MARKET_ENABLE_TUSHARE_SECONDARY=1` 且提供真实 token 时作为补缺源。
 - **来源可审计**：sidecar 响应通过 `source`、`warnings`、`field_sources` 暴露字段来源和非实时/缺字段等状态。
 - **不伪装实时价**：Eastmoney / 新浪实时 quote 不可用时，可能返回 AkShare `stock_value_em` 或日线最近收盘，并明确标注为非实时参考。
-- **LLM 是交易结论源**：规则特征只给 LLM 提供可审计输入，`buy` / `hold` / `sell` 必须来自 LLM 输出。
-- **严格失败语义**：K 线不足、benchmark 缺失、LLM 超时、输出缺失/重复/未知代码/非法 action 等硬依赖失败时，API/UI 显式报错，不生成 synthetic hold，不存失败回测结果。
+- **LLM 是组合目标源**：规则特征只给 LLM 提供可审计输入，实时信号的目标仓位必须来自 LLM 输出；当前仓位、调仓金额和 `open` / `add` / `hold` / `trim` / `exit` / `watch` 动作由确定性组合规则计算。
+- **严格失败语义**：K 线不足、benchmark 缺失、LLM 超时、输出缺失/重复/未知代码、实时信号非法 `targetWeight` 或回测非法 `action` 等硬依赖失败时，API/UI 显式报错，不生成 synthetic hold，不存失败回测结果。
 - **股票池刷新不静默成功**：LLM 刷新失败不写文件；LLM 返回空 proposal 可成功返回但不改 `updated_at`；只有真实新增、移除或改类才更新股票池文件。
 
 ## LLM 工作流
 
 | 场景 | 路由 / 脚本 | 关键行为 |
 |---|---|---|
-| 实时信号 | `/api/signals` | 对全池按 `SIGNALS_LLM_SCORE_BATCH_SIZE` 串行分批；模型 `LLM_MODEL`；route `maxDuration = 3600`。 |
+| 实时信号 | `/api/signals` | POST `mode=real|paper`；真实模式读取本地持仓，LLM 对全池输出目标仓位；按 `SIGNALS_LLM_SCORE_BATCH_SIZE` 串行分批；模型 `LLM_MODEL`；route `maxDuration = 3600`。 |
 | 回测 | `/api/backtest` | 每个调仓日对全池打分；`BACKTEST_SIGNAL_CONCURRENCY` 并行调仓日，日内按 `BACKTEST_LLM_SCORE_BATCH_SIZE` 串行分批；route `maxDuration = 3600`。 |
 | 股票池刷新 | `/api/universe/refresh` | 单次 LLM 审阅整池并提出增删改；`UNIVERSE_REFRESH_LLM_TIMEOUT_MS` 控制提议阶段；route `maxDuration = 900`。 |
 | 静态快照 | `web/scripts/snapshot.ts` | 生成股票池、分析师、信号和回测 JSON；可用 `SNAPSHOT_SKIP_SIGNALS=1` / `SNAPSHOT_SKIP_BACKTEST=1` 跳过重任务。 |
@@ -71,6 +71,12 @@ scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 LLM 响应按 prompt + model 哈希缓存到 `web/.cache/web.db`，约 12 小时。同参数重复跑信号或回测会复用缓存，但缓存命中不改变严格校验规则。
 
 完整变量表和调优建议见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
+
+## 真实持仓
+
+`/signals` 默认使用真实持仓模式。首次使用时可在页面粘贴券商持仓表，Web 会通过 `/api/holdings` 写入本地文件 `web/data/holdings.local.json`。该文件被 `.gitignore` 忽略，不应提交；示例结构见 [web/data/holdings.example.json](web/data/holdings.example.json)。
+
+持仓文件只接受股票池内标的、正持仓数量、非负现金和非负成本价。文件缺失或非法时，`/api/signals` 会先返回 `setup_required`，不会继续请求行情或 LLM。模拟资金模式使用页面输入的现金做目标仓位推演，不代表真实持仓。
 
 ## 本地启动
 
@@ -137,6 +143,7 @@ npm run dev
 ## 安全
 
 - 不提交 `.env`、`.env.local`、`cache.db`、API key。
+- 不提交 `web/data/holdings.local.json`；它可能包含真实持仓、成本和现金信息。
 - LLM key 只放在 `web/.env.local` 或部署环境变量。
 - Tushare token 只放在 `pyserver/.env` 或部署环境变量。
 - `docs/data/*.json` 是公开静态快照，包含研究输出，只适合作为可公开研究记录。

@@ -65,9 +65,36 @@ npm run dev
 - pyserver OpenAPI：<http://localhost:8001/docs>
 - pyserver health：<http://localhost:8001/health>
 
+## 真实持仓与组合信号
+
+`/signals` 有两种组合模式：
+
+| 模式 | 行为 |
+|---|---|
+| 真实持仓 | 读取 `web/data/holdings.local.json`，用现价计算当前权重、浮盈亏、目标金额和调仓差额。 |
+| 模拟资金 | 使用页面输入的现金金额推演目标仓位，不读取真实持仓，不代表实际账户。 |
+
+真实持仓文件被 `.gitignore` 忽略，避免提交现金、成本和持仓数量。可从示例复制：
+
+```bash
+cd web
+cp data/holdings.example.json data/holdings.local.json
+```
+
+也可以在 `/signals` 页面粘贴券商持仓表，支持中文表头如 `证券代码`、`持仓数量`、`成本价`、`可用资金`，以及英文 CSV 表头 `symbol`、`shares`、`cost_basis`、`cash`。保存后会调用 `/api/holdings` 写入本地 JSON。
+
+校验规则：
+
+- `cash` 必须是非负数字。
+- `positions[].symbol` 必须在股票池内，不能重复。
+- `positions[].shares` 必须为正数。
+- `positions[].cost_basis` 必须为非负数字。
+
+真实模式下如果文件缺失或非法，`/api/signals` 会返回 `setup_required`，并在加载行情和调用 LLM 前停止。这样不会把“无持仓配置”误当成空仓信号。
+
 ## LLM 调优变量
 
-OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与回测均要求 LLM 覆盖请求内全部标的；输出缺失、重复、未知代码或非法 `action` 时任务失败，UI/API 显式报错。
+OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与回测均要求 LLM 覆盖请求内全部标的；输出缺失、重复、未知代码、实时信号非法 `targetWeight` 或回测非法 `action` 时任务失败，UI/API 显式报错。
 
 | 变量 | 默认 | 说明 |
 |---|---:|---|
