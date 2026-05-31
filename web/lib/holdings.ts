@@ -27,6 +27,7 @@ export interface LoadedHoldings {
 }
 
 export const HOLDINGS_FILE = path.join(process.cwd(), "data", "holdings.local.json");
+const HOLDINGS_FILE_DISPLAY = "web/data/holdings.local.json";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -36,38 +37,25 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function readHoldings(entries?: UniverseEntry[]): LoadedHoldings {
-  const universeSymbols = entries ? new Set(entries.map((entry) => entry.symbol)) : undefined;
-  if (!fs.existsSync(HOLDINGS_FILE)) {
-    return {
-      fileFound: false,
-      filePath: HOLDINGS_FILE,
-      cash: 0,
-      positions: [],
-      warnings: ["holdings.local.json not found; treating portfolio as empty"],
-    };
-  }
+function universeSymbolSet(entries?: UniverseEntry[]): Set<string> | undefined {
+  return entries ? new Set(entries.map((entry) => entry.symbol)) : undefined;
+}
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(fs.readFileSync(HOLDINGS_FILE, "utf-8")) as unknown;
-  } catch (e) {
-    throw new Error(`holdings.local.json invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  if (!isRecord(parsed)) {
+export function validateHoldings(value: unknown, entries?: UniverseEntry[]): HoldingsFile {
+  const universeSymbols = universeSymbolSet(entries);
+  if (!isRecord(value)) {
     throw new Error("holdings.local.json must be a JSON object");
   }
-  const cash = finiteNumber(parsed.cash);
+  const cash = finiteNumber(value.cash);
   if (cash == null || cash < 0) {
     throw new Error("holdings.local.json cash must be a non-negative number");
   }
-  if (!Array.isArray(parsed.positions)) {
+  if (!Array.isArray(value.positions)) {
     throw new Error("holdings.local.json positions must be an array");
   }
 
   const seen = new Set<string>();
-  const positions = parsed.positions.map((item, index): HoldingPosition => {
+  const positions = value.positions.map((item, index): HoldingPosition => {
     if (!isRecord(item)) {
       throw new Error(`holdings.local.json positions[${index}] must be an object`);
     }
@@ -99,11 +87,62 @@ export function readHoldings(entries?: UniverseEntry[]): LoadedHoldings {
   });
 
   return {
-    fileFound: true,
-    filePath: HOLDINGS_FILE,
-    updated_at: typeof parsed.updated_at === "string" ? parsed.updated_at : undefined,
+    updated_at: typeof value.updated_at === "string" ? value.updated_at : undefined,
     cash,
     positions,
+  };
+}
+
+export function writeHoldings(value: unknown, entries?: UniverseEntry[]): LoadedHoldings {
+  const validated = validateHoldings(value, entries);
+  fs.mkdirSync(path.dirname(HOLDINGS_FILE), { recursive: true });
+  const withDate: HoldingsFile = {
+    ...validated,
+    updated_at: validated.updated_at ?? new Date().toISOString().slice(0, 10),
+  };
+  const tmpFile = `${HOLDINGS_FILE}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpFile, `${JSON.stringify(withDate, null, 2)}\n`, "utf-8");
+  fs.renameSync(tmpFile, HOLDINGS_FILE);
+  return {
+    fileFound: true,
+    filePath: HOLDINGS_FILE,
+    updated_at: withDate.updated_at,
+    cash: withDate.cash,
+    positions: withDate.positions,
+    warnings: [],
+  };
+}
+
+export function holdingsFileDisplayPath(): string {
+  return HOLDINGS_FILE_DISPLAY;
+}
+
+export function readHoldings(entries?: UniverseEntry[]): LoadedHoldings {
+  if (!fs.existsSync(HOLDINGS_FILE)) {
+    return {
+      fileFound: false,
+      filePath: HOLDINGS_FILE,
+      cash: 0,
+      positions: [],
+      warnings: ["holdings.local.json not found; treating portfolio as empty"],
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(HOLDINGS_FILE, "utf-8")) as unknown;
+  } catch (e) {
+    throw new Error(`holdings.local.json invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  const holdings = validateHoldings(parsed, entries);
+
+  return {
+    fileFound: true,
+    filePath: HOLDINGS_FILE,
+    updated_at: holdings.updated_at,
+    cash: holdings.cash,
+    positions: holdings.positions,
     warnings: [],
   };
 }

@@ -97,7 +97,7 @@ button.secondary, .button.secondary {
 }
 button:hover, .button:hover { filter: brightness(.98); }
 button:disabled { opacity: .55; cursor: not-allowed; }
-input, select {
+input, select, textarea {
   background: var(--field);
   color: var(--fg);
   border: 1px solid var(--border);
@@ -105,7 +105,13 @@ input, select {
   border-radius: 7px;
   font-size: 13px;
 }
-input:focus, select:focus { outline: 2px solid rgba(37, 99, 235, .18); border-color: #9db8ff; }
+textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.45;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid rgba(37, 99, 235, .18); border-color: #9db8ff; }
 
 .kpi { display: flex; flex-direction: column; gap: 4px; padding: 13px 16px; border-radius: 10px; min-width: 140px; }
 .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
@@ -152,10 +158,22 @@ input:focus, select:focus { outline: 2px solid rgba(37, 99, 235, .18); border-co
 .setup-card { border-color: var(--warn); margin-bottom: 14px; display: flex; flex-direction: column; gap: 14px; }
 .setup-copy { display: flex; flex-direction: column; gap: 5px; }
 .setup-copy strong { font-size: 16px; }
+.setup-form-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; align-items: start; }
+.setup-paste-field { min-width: 0; }
 .setup-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.setup-errors {
+  border: 1px solid #ffd1cc;
+  background: var(--danger-weak);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.setup-preview { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .setup-details { color: var(--muted); font-size: 13px; }
 .setup-details summary { cursor: pointer; color: var(--fg); font-weight: 650; width: fit-content; }
-.setup-path { margin-top: 10px; }
+.setup-path { margin-top: 0; }
 .setup-details pre {
   margin: 10px 0 0;
   white-space: pre-wrap;
@@ -174,6 +192,7 @@ input:focus, select:focus { outline: 2px solid rgba(37, 99, 235, .18); border-co
   .summary-grid, .theme-grid { grid-template-columns: 1fr; }
   .toolbar-status { margin-left: 0; width: 100%; }
   .field { flex: 1 1 160px; min-width: 0; }
+  .setup-form-grid { grid-template-columns: 1fr; }
   h1 { font-size: 28px; }
   .table-wrap { overflow-x: auto; }
   table { min-width: 760px; }

@@ -158,11 +158,40 @@ test("/api/signals real mode asks for holdings setup before loading market data"
     })));
     const terminal = events.at(-1);
     assert.equal(terminal?.type, "setup_required");
-    assert.match(String(terminal?.message), /模拟资金/);
+    assert.match(String(terminal?.message), /配置现金和持仓/);
     assert.equal(terminal?.filePath, "web/data/holdings.local.json");
     assert.equal(calls, 0, "expected no pyserver or LLM calls before holdings setup");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("/api/signals real mode lets users reconfigure invalid local holdings before loading market data", async () => {
+  fs.writeFileSync("data/holdings.local.json", JSON.stringify({
+    cash: 0,
+    positions: [{ symbol: "999999", shares: 100, cost_basis: 1 }],
+  }));
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response("unexpected", { status: 500 });
+  }) as typeof fetch;
+  try {
+    const { POST } = await import("../app/api/signals/route");
+    const events = await readEvents(await POST(new NextRequest("http://test/api/signals", {
+      method: "POST",
+      body: JSON.stringify({ mode: "real" }),
+    })));
+    const terminal = events.at(-1);
+    assert.equal(terminal?.type, "setup_required");
+    assert.equal(terminal?.code, "holdings_invalid");
+    assert.match(String(terminal?.message), /重新配置现金和持仓/);
+    assert.equal(terminal?.filePath, "web/data/holdings.local.json");
+    assert.equal(calls, 0, "expected no pyserver or LLM calls before holdings setup");
+  } finally {
+    globalThis.fetch = originalFetch;
+    fs.rmSync("data/holdings.local.json", { force: true });
   }
 });
 

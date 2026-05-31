@@ -3,7 +3,7 @@ import { scorePortfolioTargets, type PortfolioScoringSnapshot, type SymbolSnapsh
 import { mapPool } from "@/lib/concurrent";
 import { fetchKlines, fetchFundamental } from "@/lib/pyserver";
 import { loadEntries } from "@/lib/universe";
-import { readHoldings } from "@/lib/holdings";
+import { holdingsFileDisplayPath, readHoldings } from "@/lib/holdings";
 import { buildPortfolioContext, buildPortfolioRows, DEFAULT_MAX_POSITIONS } from "@/lib/portfolio";
 
 export const runtime = "nodejs";
@@ -35,7 +35,11 @@ function parsePaperCash(value: unknown): number {
 }
 
 function setupRequiredMessage() {
-  return "未找到真实持仓文件。可以先用模拟资金运行，或配置本地持仓后生成真实调仓差额。";
+  return "未找到本地真实持仓。请先配置现金和持仓明细，保存后生成真实调仓差额。";
+}
+
+function invalidHoldingsMessage(reason: string) {
+  return `本地真实持仓文件无法读取：${reason}。请重新配置现金和持仓明细，保存后覆盖本地文件。`;
 }
 
 type LiveSnapshot = SymbolSnapshot & {
@@ -66,18 +70,32 @@ export async function POST(req: NextRequest) {
         const holdings = mode === "paper"
           ? {
               fileFound: false,
-              filePath: "web/data/holdings.local.json",
+              filePath: holdingsFileDisplayPath(),
               cash: paperCash,
               positions: [],
               warnings: ["模拟资金模式：目标金额仅用于人工推演，不代表真实持仓。"],
             }
-          : readHoldings(universe);
+          : (() => {
+              try {
+                return readHoldings(universe);
+              } catch (e) {
+                send({
+                  type: "setup_required",
+                  code: "holdings_invalid",
+                  message: invalidHoldingsMessage(e instanceof Error ? e.message : String(e)),
+                  filePath: holdingsFileDisplayPath(),
+                });
+                controller.close();
+                return null;
+              }
+            })();
+        if (!holdings) return;
         if (mode === "real" && !holdings.fileFound) {
           send({
             type: "setup_required",
             code: "holdings_missing",
             message: setupRequiredMessage(),
-            filePath: "web/data/holdings.local.json",
+            filePath: holdingsFileDisplayPath(),
           });
           controller.close();
           return;

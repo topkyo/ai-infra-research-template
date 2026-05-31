@@ -59,3 +59,23 @@ test("readHoldings rejects invalid local holdings files", async () => {
   writeHoldings({ cash: 0, positions: [{ symbol: "688256", shares: 0, cost_basis: 1 }] });
   assert.throws(() => readHoldings(universe), /shares/);
 });
+
+test("writeHoldings validates and writes a local holdings file", async () => {
+  const { readHoldings, writeHoldings } = await import("../lib/holdings");
+  const written = writeHoldings({
+    cash: 50000,
+    positions: [{ symbol: "300308", shares: 200, cost_basis: 88.2 }],
+  }, universe);
+  assert.equal(written.fileFound, true);
+  assert.equal(written.cash, 50000);
+  assert.match(written.updated_at ?? "", /^\d{4}-\d{2}-\d{2}$/);
+
+  const holdings = readHoldings(universe);
+  assert.equal(holdings.positions[0].symbol, "300308");
+
+  assert.throws(() => writeHoldings({
+    cash: 0,
+    positions: [{ symbol: "999999", shares: 1, cost_basis: 1 }],
+  }, universe), /not in universe/);
+  assert.equal(readHoldings(universe).positions[0].symbol, "300308");
+});
