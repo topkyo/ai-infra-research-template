@@ -127,6 +127,7 @@ npm run dev
 | 文档 | 用途 |
 |---|---|
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | 本地运行、环境变量、缓存、LLM 调优、常用排障。 |
+| [docs/RESEARCH_ASSISTANT_ROADMAP.md](docs/RESEARCH_ASSISTANT_ROADMAP.md) | 个人研究辅助定位与下一阶段开发方向。 |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Docker Compose / VPS 部署完整交互应用。 |
 | [docs/README.md](docs/README.md) | GitHub Pages 静态快照说明。 |
 | [pyserver/README.md](pyserver/README.md) | 市场数据 sidecar、端点、数据源优先级和响应元数据。 |
