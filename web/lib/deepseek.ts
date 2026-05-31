@@ -154,6 +154,29 @@ export interface Signal {
   dataQuality?: string[];
 }
 
+export interface PortfolioPositionInput {
+  shares: number;
+  costBasis: number;
+  currentWeight: number;
+  unrealizedPnlPct: number | null;
+}
+
+export interface PortfolioScoringSnapshot extends SymbolSnapshot {
+  position?: PortfolioPositionInput | null;
+}
+
+export interface PortfolioTargetSignal {
+  symbol: string;
+  targetWeight: number;
+  confidence: number;
+  rationale: string;
+  evidence: string[];
+  risks: string[];
+  invalidation: string;
+  source?: SignalSource;
+  dataQuality?: string[];
+}
+
 const STRATEGY_SYSTEM = `你是一名专注于"硅基文明消费"主题的中国市场量化策略师。
 
 主题定义：将 AI / 硅基文明视为一个新兴文明，其自身需要"消费"的不是人类消费品，
@@ -174,6 +197,17 @@ PEG 显著恶化、或主题景气度反转、或价格跌破关键均线且伴�
 严格输出 JSON：{"signals":[{"symbol":"...","action":"buy|hold|sell","confidence":0..1,"size":0..1,"rationale":"中文,<=60字"}]}
 必须覆盖输入中的每一个 symbol，且每个 symbol 只能出现一次。
 不要输出任何其他文本。`;
+
+const PORTFOLIO_STRATEGY_SYSTEM = `你是一名专注于 AI 基建主题的中国 A 股持仓决策辅助分析师。
+
+任务：基于股票池、近期收盘价、基本面、规则特征和当前持仓上下文，输出未来 5-20 个交易日的目标仓位建议。
+目标仓位是组合权益百分比，范围 0..1。不要假设可以自动交易；你的输出只用于人工复核。
+
+评估框架：基本面估值 40%、主题景气度 30%、价格动量与择时 30%。已有持仓要考虑浮盈亏、趋势破坏、估值恶化和是否值得继续占用仓位。
+数据缺失必须体现在 risks 或 invalidation 中，不得用猜测补足。
+
+严格输出 JSON：{"signals":[{"symbol":"...","targetWeight":0..1,"confidence":0..1,"rationale":"中文,<=80字","evidence":["中文,<=80字"],"risks":["中文,<=80字"],"invalidation":"中文,<=80字"}]}
+必须覆盖输入中的每一个 symbol，且每个 symbol 只能出现一次。不要输出任何其他文本。`;
 
 const MIN_SCORABLE_KLINES = 10;
 const DEFAULT_SCORE_BATCH_SIZE = 10;
@@ -199,6 +233,35 @@ function clamp01(value: unknown): number {
 function normalizeRationale(value: unknown): string {
   const text = typeof value === "string" && value.trim() ? value.trim() : "LLM未提供理由";
   return text.slice(0, 60);
+}
+
+function normalizeShortText(value: unknown, field: string, symbol: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`LLM portfolio signal ${symbol} missing ${field}`);
+  }
+  return value.trim().slice(0, 80);
+}
+
+function normalizeShortTextArray(value: unknown, field: string, symbol: string): string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`LLM portfolio signal ${symbol} missing ${field}`);
+  }
+  const out = value
+    .map((item) => typeof item === "string" ? item.trim() : "")
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((item) => item.slice(0, 80));
+  if (out.length === 0) {
+    throw new Error(`LLM portfolio signal ${symbol} missing ${field}`);
+  }
+  return out;
+}
+
+function strictWeight(value: unknown, field: string, symbol: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`LLM portfolio signal ${symbol} invalid ${field}: ${String(value)}`);
+  }
+  return Number(value.toFixed(6));
 }
 
 function chunks<T>(items: T[], size: number): T[][] {
@@ -261,6 +324,62 @@ function normalizeLlmSignals(
       confidence: clamp01(candidate.confidence),
       size: clamp01(candidate.size),
       rationale: normalizeRationale(candidate.rationale),
+      source,
+      dataQuality: featuresBySymbol.get(symbol)?.dataMissingFlags ?? [],
+    });
+  }
+
+  const missing = [...expected].filter((symbol) => !seen.has(symbol));
+  if (missing.length > 0) {
+    throw new Error(`LLM response missing symbols: ${missing.join(",")}`);
+  }
+
+  const bySymbol = new Map(out.map((signal) => [signal.symbol, signal]));
+  return batch.map((snapshot) => bySymbol.get(snapshot.symbol)!);
+}
+
+function normalizePortfolioSignals(
+  raw: string,
+  batch: PortfolioScoringSnapshot[],
+  source: SignalSource,
+): PortfolioTargetSignal[] {
+  let parsed: { signals?: unknown };
+  try {
+    parsed = JSON.parse(raw) as { signals?: unknown };
+  } catch (e) {
+    throw new Error(`LLM returned invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!Array.isArray(parsed.signals)) {
+    throw new Error("LLM response missing signals array");
+  }
+
+  const expected = new Set(batch.map((s) => s.symbol));
+  const featuresBySymbol = new Map(batch.map((s) => [s.symbol, buildRuleFeatures(s)]));
+  const seen = new Set<string>();
+  const out: PortfolioTargetSignal[] = [];
+
+  for (const item of parsed.signals) {
+    if (!item || typeof item !== "object") {
+      throw new Error("LLM portfolio signal item must be an object");
+    }
+    const candidate = item as Record<string, unknown>;
+    const symbol = typeof candidate.symbol === "string" ? candidate.symbol.trim() : "";
+    if (!expected.has(symbol)) {
+      throw new Error(`LLM returned unknown symbol ${symbol || "<empty>"}`);
+    }
+    if (seen.has(symbol)) {
+      throw new Error(`LLM returned duplicate symbol ${symbol}`);
+    }
+    seen.add(symbol);
+
+    out.push({
+      symbol,
+      targetWeight: strictWeight(candidate.targetWeight, "targetWeight", symbol),
+      confidence: strictWeight(candidate.confidence, "confidence", symbol),
+      rationale: normalizeShortText(candidate.rationale, "rationale", symbol),
+      evidence: normalizeShortTextArray(candidate.evidence, "evidence", symbol),
+      risks: normalizeShortTextArray(candidate.risks, "risks", symbol),
+      invalidation: normalizeShortText(candidate.invalidation, "invalidation", symbol),
       source,
       dataQuality: featuresBySymbol.get(symbol)?.dataMissingFlags ?? [],
     });
@@ -348,6 +467,121 @@ async function scoreSymbolsBatchLlm(
 }
 
 export const scoreSymbolsLlm = scoreSymbolsBatchLlm;
+
+async function scorePortfolioTargetsBatchLlm(
+  snapshots: PortfolioScoringSnapshot[],
+  opts: {
+    asOf?: string;
+    bypassCache?: boolean;
+  } = {},
+): Promise<PortfolioTargetSignal[]> {
+  if (snapshots.length === 0) return [];
+  const userPayload = {
+    as_of: opts.asOf ?? new Date().toISOString().slice(0, 10),
+    objective: "未来5-20个交易日目标仓位。输出是人工复核用的持仓建议，不是自动交易指令。",
+    symbols: snapshots.map((s) => {
+      const features = buildRuleFeatures(s);
+      return {
+        symbol: s.symbol,
+        name: s.name ?? undefined,
+        theme: s.theme,
+        closes_tail30: s.closes.slice(-30).map((x) => Number(x.toFixed(3))),
+        pe_ttm: s.fundamental?.pe_ttm ?? null,
+        pb: s.fundamental?.pb ?? null,
+        market_cap_yi: s.fundamental?.market_cap ?? null,
+        profit_yoy_pct: s.fundamental?.profit_yoy ?? null,
+        current_position: s.position
+          ? {
+              shares: s.position.shares,
+              cost_basis: s.position.costBasis,
+              current_weight: s.position.currentWeight,
+              unrealized_pnl_pct: s.position.unrealizedPnlPct,
+            }
+          : { shares: 0, current_weight: 0, unrealized_pnl_pct: null },
+        features: {
+          peg: features.peg,
+          peg_score: Number(features.pegScore.toFixed(3)),
+          momentum_20d_pct: features.momentum20dPct,
+          momentum_score: Number(features.momentumScore.toFixed(3)),
+          theme_score: Number(features.themeScore.toFixed(3)),
+          data_missing_flags: features.dataMissingFlags,
+        },
+      };
+    }),
+  };
+
+  const messages = [
+    { role: "system" as const, content: PORTFOLIO_STRATEGY_SYSTEM },
+    { role: "user" as const, content: JSON.stringify(userPayload) },
+  ];
+  const cfg = resolveLlmConfig();
+  const timeoutMs = envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 90_000);
+  let lastError: unknown;
+  const configuredAttempts = envPositiveInt("SIGNALS_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1));
+  const attempts = opts.bypassCache ? 1 : configuredAttempts;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const result = await chatDetailed(messages, {
+        model: cfg.model,
+        responseFormat: "json_object",
+        temperature: attempt === 0 ? 0.2 : 0,
+        bypassCache: opts.bypassCache || attempt > 0,
+        timeoutMs,
+      });
+      if (!result.content.trim()) {
+        throw new Error("LLM returned empty content");
+      }
+      return normalizePortfolioSignals(result.content, snapshots, signalSource(result.cacheHit));
+    } catch (e) {
+      lastError = e;
+      if (attempt < attempts - 1) {
+        await sleep(500 * (attempt + 1));
+      }
+    }
+  }
+  throw lastError;
+}
+
+export async function scorePortfolioTargets(
+  snapshots: PortfolioScoringSnapshot[],
+  opts: {
+    asOf?: string;
+    bypassCache?: boolean;
+    batchSize?: number;
+    onBatchProgress?: (done: number, total: number) => void;
+  } = {},
+): Promise<PortfolioTargetSignal[]> {
+  if (snapshots.length === 0) return [];
+
+  const unscorable = snapshots.filter((s) => s.closes.length < MIN_SCORABLE_KLINES);
+  if (unscorable.length > 0) {
+    throw new Error(
+      `insufficient live kline data for portfolio scoring: ${unscorable.map((s) => s.symbol).join(",")}`,
+    );
+  }
+
+  const seen = new Set<string>();
+  const duplicateInput = snapshots
+    .map((s) => s.symbol)
+    .filter((symbol) => {
+      if (seen.has(symbol)) return true;
+      seen.add(symbol);
+      return false;
+    });
+  if (duplicateInput.length > 0) {
+    throw new Error(`duplicate input symbols for portfolio scoring: ${duplicateInput.join(",")}`);
+  }
+
+  const batchSize = opts.batchSize ?? Number(process.env.LLM_SCORE_BATCH_SIZE ?? DEFAULT_SCORE_BATCH_SIZE);
+  const scored: PortfolioTargetSignal[] = [];
+  for (const batch of chunks(snapshots, batchSize)) {
+    scored.push(...await scorePortfolioTargetsBatchLlm(batch, opts));
+    opts.onBatchProgress?.(scored.length, snapshots.length);
+  }
+
+  const bySymbol = new Map(scored.map((signal) => [signal.symbol, signal] as const));
+  return snapshots.map((snapshot) => bySymbol.get(snapshot.symbol)!);
+}
 
 export async function scoreSymbols(
   snapshots: SymbolSnapshot[],

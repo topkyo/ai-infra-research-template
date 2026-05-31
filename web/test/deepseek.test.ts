@@ -236,6 +236,61 @@ test("scoreSymbols rejects duplicate input symbols before calling the LLM", asyn
   assert.deepEqual(calls, []);
 });
 
+test("scorePortfolioTargets validates strict target-weight output", async () => {
+  const { scorePortfolioTargets } = await import("../lib/deepseek");
+  const { result, calls } = await withMockedLlm(
+    (symbols) => ({
+      signals: symbols.map((symbol) => ({
+        symbol,
+        targetWeight: symbol === "A" ? 0.2 : 0,
+        confidence: 0.7,
+        rationale: "目标仓位测试",
+        evidence: ["估值和动量支持"],
+        risks: ["数据可能滞后"],
+        invalidation: "跌破趋势支撑",
+      })),
+    }),
+    () => scorePortfolioTargets([snapshot("A"), snapshot("B")], { bypassCache: true, batchSize: 1 }),
+  );
+  assert.deepEqual(calls, [["A"], ["B"]]);
+  assert.equal(result[0].targetWeight, 0.2);
+  assert.equal(result[0].source, "llm-live");
+  assert.deepEqual(result.map((s) => s.symbol), ["A", "B"]);
+});
+
+test("scorePortfolioTargets rejects missing duplicate unknown and invalid portfolio outputs", async () => {
+  const { scorePortfolioTargets } = await import("../lib/deepseek");
+  await assert.rejects(
+    () => withMockedLlm(() => ({ signals: [] }), () => scorePortfolioTargets([snapshot("A")], { bypassCache: true })),
+    /missing symbols: A/,
+  );
+  await assert.rejects(
+    () => withMockedLlm(() => ({ signals: [
+      { symbol: "A", targetWeight: 0.1, confidence: 0.5, rationale: "ok", evidence: ["e"], risks: ["r"], invalidation: "i" },
+      { symbol: "A", targetWeight: 0.1, confidence: 0.5, rationale: "ok", evidence: ["e"], risks: ["r"], invalidation: "i" },
+    ] }), () => scorePortfolioTargets([snapshot("A")], { bypassCache: true })),
+    /duplicate symbol A/,
+  );
+  await assert.rejects(
+    () => withMockedLlm(() => ({ signals: [
+      { symbol: "B", targetWeight: 0.1, confidence: 0.5, rationale: "ok", evidence: ["e"], risks: ["r"], invalidation: "i" },
+    ] }), () => scorePortfolioTargets([snapshot("A")], { bypassCache: true })),
+    /unknown symbol B/,
+  );
+  await assert.rejects(
+    () => withMockedLlm(() => ({ signals: [
+      { symbol: "A", targetWeight: 1.2, confidence: 0.5, rationale: "ok", evidence: ["e"], risks: ["r"], invalidation: "i" },
+    ] }), () => scorePortfolioTargets([snapshot("A")], { bypassCache: true })),
+    /invalid targetWeight/,
+  );
+  await assert.rejects(
+    () => withMockedLlm(() => ({ signals: [
+      { symbol: "A", targetWeight: 0.2, confidence: 0.5, rationale: "ok", evidence: [], risks: ["r"], invalidation: "i" },
+    ] }), () => scorePortfolioTargets([snapshot("A")], { bypassCache: true })),
+    /missing evidence/,
+  );
+});
+
 test("scoreSymbols does not fall back to rule-driven trading when the LLM is unavailable", async () => {
   const { scoreSymbols } = await import("../lib/deepseek");
   const originalFetch = globalThis.fetch;

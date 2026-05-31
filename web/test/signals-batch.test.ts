@@ -71,10 +71,12 @@ function installBatchedSuccessFetch() {
             content: JSON.stringify({
               signals: symbols.map((symbol) => ({
                 symbol,
-                action: "hold",
+                targetWeight: symbol === "000001" ? 0.2 : 0,
                 confidence: 0.5,
-                size: 0,
                 rationale: "ok",
+                evidence: ["test evidence"],
+                risks: ["test risk"],
+                invalidation: "test invalidation",
               })),
             }),
           },
@@ -121,9 +123,14 @@ test("/api/signals uses batched LLM scoring when SIGNALS_LLM_SCORE_BATCH_SIZE is
   process.env.SIGNALS_LLM_SCORE_BATCH_SIZE = "2";
   try {
     const { POST } = await import("../app/api/signals/route");
-    const events = await readEvents(await POST(new NextRequest("http://test/api/signals", { method: "POST" })));
+    const events = await readEvents(await POST(new NextRequest("http://test/api/signals", {
+      method: "POST",
+      body: JSON.stringify({ mode: "paper", paperCash: 1_000_000 }),
+    })));
     const terminal = events.at(-1);
     assert.equal(terminal?.type, "result");
+    assert.ok("portfolio" in terminal!);
+    assert.equal((terminal?.portfolio as { equity?: number } | undefined)?.equity, 1_000_000);
     assert.equal(getLlmCalls(), 2, "expected ceil(3/2) LLM calls");
     const scoring = events.filter((e) => e.type === "progress" && e.phase === "scoring");
     assert.ok(scoring.some((e) => e.done === 2 && e.total === 3));
@@ -134,4 +141,38 @@ test("/api/signals uses batched LLM scoring when SIGNALS_LLM_SCORE_BATCH_SIZE is
     delete process.env.DEEPSEEK_API_KEY;
     delete process.env.SIGNALS_LLM_SCORE_BATCH_SIZE;
   }
+});
+
+test("/api/signals real mode asks for holdings setup before loading market data", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response("unexpected", { status: 500 });
+  }) as typeof fetch;
+  try {
+    const { POST } = await import("../app/api/signals/route");
+    const events = await readEvents(await POST(new NextRequest("http://test/api/signals", {
+      method: "POST",
+      body: JSON.stringify({ mode: "real" }),
+    })));
+    const terminal = events.at(-1);
+    assert.equal(terminal?.type, "setup_required");
+    assert.match(String(terminal?.message), /模拟资金/);
+    assert.equal(terminal?.filePath, "web/data/holdings.local.json");
+    assert.equal(calls, 0, "expected no pyserver or LLM calls before holdings setup");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("/api/signals rejects invalid paper cash", async () => {
+  const { POST } = await import("../app/api/signals/route");
+  const events = await readEvents(await POST(new NextRequest("http://test/api/signals", {
+    method: "POST",
+    body: JSON.stringify({ mode: "paper", paperCash: 0 }),
+  })));
+  const terminal = events.at(-1);
+  assert.equal(terminal?.type, "error");
+  assert.match(String(terminal?.message), /paperCash/);
 });

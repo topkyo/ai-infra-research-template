@@ -1,0 +1,12 @@
+{
+  "$schema_note": "Copy to holdings.local.json and edit locally. This file is only an example.",
+  "updated_at": "2026-05-31",
+  "cash": 100000,
+  "positions": [
+    {
+      "symbol": "688256",
+      "shares": 100,
+      "cost_basis": 120.5
+    }
+  ]
+}

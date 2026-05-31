@@ -18,6 +18,11 @@ const universe = {
   ],
 };
 fs.writeFileSync("data/universe.json", JSON.stringify(universe, null, 2) + "\n");
+fs.writeFileSync("data/holdings.local.json", JSON.stringify({
+  updated_at: "2026-01-01",
+  cash: 100000,
+  positions: [],
+}, null, 2) + "\n");
 
 function makeKlines(start: string, count: number): Kline[] {
   const d = new Date(start);

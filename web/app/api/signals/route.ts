@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
-import { scoreSymbols, type Signal, type SymbolSnapshot } from "@/lib/deepseek";
+import { scorePortfolioTargets, type PortfolioScoringSnapshot, type SymbolSnapshot } from "@/lib/deepseek";
 import { mapPool } from "@/lib/concurrent";
 import { fetchKlines, fetchFundamental } from "@/lib/pyserver";
-import { loadEntries, type UniverseEntry } from "@/lib/universe";
+import { loadEntries } from "@/lib/universe";
+import { readHoldings } from "@/lib/holdings";
+import { buildPortfolioContext, buildPortfolioRows, DEFAULT_MAX_POSITIONS } from "@/lib/portfolio";
 
 export const runtime = "nodejs";
 // Batched scoring: ~ceil(pool/batchSize) serial LLM calls; allow up to ~1h on large pools.
@@ -20,17 +22,28 @@ const SIGNALS_LLM_SCORE_BATCH_SIZE = envPositiveInt(
   "SIGNALS_LLM_SCORE_BATCH_SIZE",
   envPositiveInt("LLM_SCORE_BATCH_SIZE", 10),
 );
+const DEFAULT_PAPER_CASH = 1_000_000;
 
-type LiveSnapshot = SymbolSnapshot & { dataErrors?: string[] };
+type PortfolioMode = "real" | "paper";
 
-interface SignalRow {
-  entry: UniverseEntry;
-  snapshot: LiveSnapshot & {
-    fundamentalSource?: string | null;
-    fundamentalFieldSources?: Record<string, string> | null;
-  };
-  signal: Signal;
+function parsePaperCash(value: unknown): number {
+  if (value == null) return DEFAULT_PAPER_CASH;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error("paperCash must be a positive number");
+  }
+  return value;
 }
+
+function setupRequiredMessage() {
+  return "未找到真实持仓文件。可以先用模拟资金运行，或配置本地持仓后生成真实调仓差额。";
+}
+
+type LiveSnapshot = SymbolSnapshot & {
+  latestDate?: string | null;
+  dataErrors?: string[];
+  fundamentalSource?: string | null;
+  fundamentalFieldSources?: Record<string, string> | null;
+};
 
 function startDate90d(): string {
   const d = new Date();
@@ -38,7 +51,9 @@ function startDate90d(): string {
   return d.toISOString().slice(0, 10).replaceAll("-", "");
 }
 
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => ({}))) as { mode?: unknown; paperCash?: unknown };
+  const mode: PortfolioMode = body.mode === "paper" ? "paper" : "real";
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -47,6 +62,26 @@ export async function POST(_req: NextRequest) {
       };
       try {
         const universe = loadEntries();
+        const paperCash = mode === "paper" ? parsePaperCash(body.paperCash) : DEFAULT_PAPER_CASH;
+        const holdings = mode === "paper"
+          ? {
+              fileFound: false,
+              filePath: "web/data/holdings.local.json",
+              cash: paperCash,
+              positions: [],
+              warnings: ["模拟资金模式：目标金额仅用于人工推演，不代表真实持仓。"],
+            }
+          : readHoldings(universe);
+        if (mode === "real" && !holdings.fileFound) {
+          send({
+            type: "setup_required",
+            code: "holdings_missing",
+            message: setupRequiredMessage(),
+            filePath: "web/data/holdings.local.json",
+          });
+          controller.close();
+          return;
+        }
         const start = startDate90d();
         let loaded = 0;
         send({ type: "progress", phase: "loading", done: 0, total: universe.length });
@@ -66,6 +101,7 @@ export async function POST(_req: NextRequest) {
             symbol: entry.symbol,
             name: entry.name,
             theme: entry.theme,
+            latestDate: klines.at(-1)?.date ?? null,
             closes: klines.map((k) => k.close),
             fundamentalSource: fund?.source ?? null,
             fundamentalFieldSources: fund?.field_sources ?? null,
@@ -91,21 +127,31 @@ export async function POST(_req: NextRequest) {
           throw new Error(`live kline data insufficient: ${missingKlines.map((s) => s.symbol).join(",")}`);
         }
 
+        const asOf = snapshots
+          .map((snapshot) => snapshot.latestDate)
+          .filter((date): date is string => Boolean(date))
+          .sort()
+          .at(-1) ?? new Date().toISOString().slice(0, 10);
+        const { portfolio, positions } = buildPortfolioContext(
+          holdings,
+          snapshots,
+          asOf,
+          DEFAULT_MAX_POSITIONS,
+          mode,
+        );
+        const scoringSnapshots: PortfolioScoringSnapshot[] = snapshots.map((snapshot) => ({
+          ...snapshot,
+          position: positions.get(snapshot.symbol) ?? null,
+        }));
         send({ type: "progress", phase: "scoring", done: 0, total: snapshots.length });
-        const signals = await scoreSymbols(snapshots, {
+        const targets = await scorePortfolioTargets(scoringSnapshots, {
+          asOf,
           batchSize: SIGNALS_LLM_SCORE_BATCH_SIZE,
           onBatchProgress: (done, total) => send({ type: "progress", phase: "scoring", done, total }),
         });
         send({ type: "progress", phase: "scoring", done: snapshots.length, total: snapshots.length });
-        const signalBySymbol = new Map(signals.map((signal) => [signal.symbol, signal]));
-        const snapshotBySymbol = new Map(snapshots.map((snapshot) => [snapshot.symbol, snapshot]));
-        const rows: SignalRow[] = universe.map((entry) => {
-          const snapshot = snapshotBySymbol.get(entry.symbol);
-          const signal = signalBySymbol.get(entry.symbol);
-          if (!snapshot || !signal) throw new Error(`missing signal row for ${entry.symbol}`);
-          return { entry, snapshot, signal };
-        });
-        send({ type: "result", rows });
+        const rows = buildPortfolioRows(universe, snapshots, targets, positions, portfolio);
+        send({ type: "result", portfolio, rows });
         controller.close();
       } catch (e) {
         send({ type: "error", message: e instanceof Error ? e.message : String(e) });
