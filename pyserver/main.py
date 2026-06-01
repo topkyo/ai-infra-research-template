@@ -83,9 +83,8 @@ if MOCK_MODE:
     )
 
     _pro = None
-elif HAS_TUSHARE_TOKEN:
-    ts.set_token(TUSHARE_TOKEN)
-    _pro = ts.pro_api()
+elif MARKET_ENABLE_TUSHARE_SECONDARY:
+    _pro = ts.pro_api(TUSHARE_TOKEN)
 else:
     _pro = None
 
