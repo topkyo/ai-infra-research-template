@@ -19,23 +19,25 @@ function snapshot(symbol: string, closes = 30): SymbolSnapshot {
 }
 
 async function withMockedLlm<T>(
-  handler: (symbols: string[], call: number) => unknown,
+  handler: (symbols: string[], call: number, messages: Array<{ role: string; content: string }>) => unknown,
   fn: () => Promise<T>,
-): Promise<{ result: T; calls: string[][] }> {
+): Promise<{ result: T; calls: string[][]; userMessages: string[] }> {
   process.env.LLM_PROVIDER = "deepseek";
   process.env.DEEPSEEK_API_KEY = "sk-test";
   const originalFetch = globalThis.fetch;
   const calls: string[][] = [];
+  const userMessages: string[] = [];
   let call = 0;
   globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       messages?: Array<{ role: string; content: string }>;
     };
     const user = body.messages?.find((m) => m.role === "user");
+    userMessages.push(body.messages?.filter((m) => m.role === "user").map((m) => m.content).join("\n\n") ?? "");
     const payload = JSON.parse(user?.content ?? "{}") as { symbols?: Array<{ symbol: string }> };
     const symbols = (payload.symbols ?? []).map((s) => s.symbol);
     calls.push(symbols);
-    const content = JSON.stringify(handler(symbols, call++));
+    const content = JSON.stringify(handler(symbols, call++, body.messages ?? []));
     return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -44,7 +46,7 @@ async function withMockedLlm<T>(
 
   try {
     const result = await fn();
-    return { result, calls };
+    return { result, calls, userMessages };
   } finally {
     globalThis.fetch = originalFetch;
     delete process.env.LLM_PROVIDER;
@@ -187,6 +189,61 @@ test("scoreSymbols rejects empty LLM content", async () => {
   }
 });
 
+test("chatDetailed retries transient provider 503 before failing the signal pipeline", async () => {
+  const { chatDetailed } = await import("../lib/deepseek");
+  const originalFetch = globalThis.fetch;
+  process.env.LLM_PROVIDER = "opencode-go";
+  process.env.OPENCODE_GO_API_KEY = "sk-test";
+  process.env.LLM_TRANSPORT_MAX_ATTEMPTS = "3";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    if (calls === 1) {
+      return new Response("temporarily unavailable", { status: 503 });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    const result = await chatDetailed([{ role: "user", content: "ping" }], { bypassCache: true });
+    assert.equal(result.content, "ok");
+    assert.equal(result.cacheHit, false);
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.LLM_PROVIDER;
+    delete process.env.OPENCODE_GO_API_KEY;
+    delete process.env.LLM_TRANSPORT_MAX_ATTEMPTS;
+  }
+});
+
+test("chatDetailed reports exhausted transient provider retries", async () => {
+  const { chatDetailed } = await import("../lib/deepseek");
+  const originalFetch = globalThis.fetch;
+  process.env.LLM_PROVIDER = "opencode-go";
+  process.env.OPENCODE_GO_API_KEY = "sk-test";
+  process.env.LLM_TRANSPORT_MAX_ATTEMPTS = "2";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response("temporarily unavailable", { status: 503 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => chatDetailed([{ role: "user", content: "ping" }], { bypassCache: true }),
+      /opencode-go transport failed after 2 attempts: opencode-go 503/,
+    );
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.LLM_PROVIDER;
+    delete process.env.OPENCODE_GO_API_KEY;
+    delete process.env.LLM_TRANSPORT_MAX_ATTEMPTS;
+  }
+});
+
 test("scoreSymbols clamps numeric fields and truncates rationale", async () => {
   const { scoreSymbols } = await import("../lib/deepseek");
   const long = "x".repeat(100);
@@ -256,6 +313,41 @@ test("scorePortfolioTargets validates strict target-weight output", async () => 
   assert.equal(result[0].targetWeight, 0.2);
   assert.equal(result[0].source, "llm-live");
   assert.deepEqual(result.map((s) => s.symbol), ["A", "B"]);
+});
+
+test("scorePortfolioTargets retries strict schema failures bypassing cached bad output", async () => {
+  const { scorePortfolioTargets } = await import("../lib/deepseek");
+  const { result, calls, userMessages } = await withMockedLlm(
+    (symbols, call) => ({
+      signals: symbols.map((symbol) => call === 0
+        ? {
+            symbol,
+            targetWeight: 0.1,
+            confidence: 0.5,
+            rationale: "first invalid",
+            risks: ["risk"],
+            invalidation: "invalid",
+          }
+        : {
+            symbol,
+            targetWeight: 0.2,
+            confidence: 0.7,
+            rationale: "retry valid",
+            evidence: ["retry evidence"],
+            risks: ["retry risk"],
+            invalidation: "retry invalidation",
+          }),
+    }),
+    () => scorePortfolioTargets([snapshot("RETRY")]),
+  );
+
+  assert.deepEqual(calls, [["RETRY"], ["RETRY"]]);
+  assert.match(userMessages[1], /上一次输出未通过严格 JSON 校验/);
+  assert.match(userMessages[1], /missing evidence/);
+  assert.equal(result[0].symbol, "RETRY");
+  assert.equal(result[0].targetWeight, 0.2);
+  assert.deepEqual(result[0].evidence, ["retry evidence"]);
+  assert.equal(result[0].source, "llm-live");
 });
 
 test("scorePortfolioTargets rejects missing duplicate unknown and invalid portfolio outputs", async () => {

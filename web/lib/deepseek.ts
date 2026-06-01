@@ -20,11 +20,34 @@ export interface ChatOptions {
   ttlSeconds?: number;
   bypassCache?: boolean;
   timeoutMs?: number;
+  transportMaxAttempts?: number;
 }
 
 export interface ChatResult {
   content: string;
   cacheHit: boolean;
+}
+
+class LlmHttpError extends Error {
+  constructor(
+    public readonly provider: string,
+    public readonly status: number,
+    public readonly body: string,
+  ) {
+    super(`${provider} ${status}: ${body}`);
+  }
+}
+
+function truncateErrorBody(body: string): string {
+  const text = body.trim();
+  return text.length > 500 ? `${text.slice(0, 500)}...` : text;
+}
+
+function isRetryableTransportError(error: unknown): boolean {
+  if (error instanceof LlmHttpError) {
+    return [408, 429, 500, 502, 503, 504].includes(error.status);
+  }
+  return error instanceof TypeError;
 }
 
 function extractMessageContent(message: Record<string, unknown> | undefined): string {
@@ -68,6 +91,8 @@ export async function chatDetailed(
     messages,
   };
   const llmTimeoutMs = opts.timeoutMs ?? Number(process.env.LLM_TIMEOUT_MS ?? 120_000);
+  const transportMaxAttempts = opts.transportMaxAttempts
+    ?? envPositiveInt("LLM_TRANSPORT_MAX_ATTEMPTS", 3);
 
   const doFetch = async () => {
     const body: Record<string, unknown> = {
@@ -79,38 +104,56 @@ export async function chatDetailed(
     if (responseFormat === "json_object") {
       body.response_format = { type: "json_object" };
     }
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), llmTimeoutMs);
-    let r: Response;
-    try {
-      r = await fetch(cfg.chatCompletionsUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${cfg.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: ctrl.signal,
-      });
-    } catch (e) {
-      if (e instanceof Error && e.name === "AbortError") {
-        throw new Error(`${cfg.provider} timed out after ${llmTimeoutMs}ms`);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < transportMaxAttempts; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), llmTimeoutMs);
+      let r: Response;
+      try {
+        r = await fetch(cfg.chatCompletionsUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cfg.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") {
+          throw new Error(`${cfg.provider} timed out after ${llmTimeoutMs}ms`);
+        }
+        lastError = e;
+        if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(e)) {
+          await sleep(750 * (attempt + 1));
+          continue;
+        }
+        break;
+      } finally {
+        clearTimeout(timer);
       }
-      throw e;
-    } finally {
-      clearTimeout(timer);
+      if (!r.ok) {
+        lastError = new LlmHttpError(cfg.provider, r.status, truncateErrorBody(await r.text()));
+        if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(lastError)) {
+          await sleep(750 * (attempt + 1));
+          continue;
+        }
+        break;
+      }
+      const j = (await r.json()) as {
+        choices?: { message?: Record<string, unknown> }[];
+      };
+      const content = extractMessageContent(j.choices?.[0]?.message);
+      if (!content.trim()) {
+        throw new Error(`${cfg.provider} returned empty content`);
+      }
+      return content;
     }
-    if (!r.ok) {
-      throw new Error(`${cfg.provider} ${r.status}: ${await r.text()}`);
+    if (transportMaxAttempts > 1 && isRetryableTransportError(lastError)) {
+      const message = lastError instanceof Error ? lastError.message : String(lastError);
+      throw new Error(`${cfg.provider} transport failed after ${transportMaxAttempts} attempts: ${message}`);
     }
-    const j = (await r.json()) as {
-      choices?: { message?: Record<string, unknown> }[];
-    };
-    const content = extractMessageContent(j.choices?.[0]?.message);
-    if (!content.trim()) {
-      throw new Error(`${cfg.provider} returned empty content`);
-    }
-    return content;
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   };
 
   if (opts.bypassCache) {
@@ -207,7 +250,8 @@ const PORTFOLIO_STRATEGY_SYSTEM = `你是一名专注于 AI 基建主题的中�
 数据缺失必须体现在 risks 或 invalidation 中，不得用猜测补足。
 
 严格输出 JSON：{"signals":[{"symbol":"...","targetWeight":0..1,"confidence":0..1,"rationale":"中文,<=80字","evidence":["中文,<=80字"],"risks":["中文,<=80字"],"invalidation":"中文,<=80字"}]}
-必须覆盖输入中的每一个 symbol，且每个 symbol 只能出现一次。不要输出任何其他文本。`;
+必须覆盖输入中的每一个 symbol，且每个 symbol 只能出现一次。evidence 和 risks 必须是非空数组；如果证据或风险来自数据缺失，也要明确写出对应缺失字段。
+不要输出任何其他文本。`;
 
 const MIN_SCORABLE_KLINES = 10;
 const DEFAULT_SCORE_BATCH_SIZE = 10;
@@ -277,6 +321,37 @@ function sleep(ms: number): Promise<void> {
 
 function signalSource(cacheHit: boolean): SignalSource {
   return cacheHit ? "llm-cache" : "llm-live";
+}
+
+function isStrictLlmOutputError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return [
+    "LLM returned invalid JSON",
+    "LLM response missing signals array",
+    "LLM response missing symbols",
+    "LLM returned unknown symbol",
+    "LLM returned duplicate symbol",
+    "LLM returned invalid action",
+    "LLM signal item must be an object",
+    "LLM portfolio signal item must be an object",
+    "LLM portfolio signal",
+  ].some((marker) => error.message.includes(marker));
+}
+
+function strictOutputRepairMessages(messages: ChatMessage[], error: unknown): ChatMessage[] {
+  const reason = error instanceof Error ? error.message : String(error);
+  return [
+    ...messages,
+    {
+      role: "user",
+      content: [
+        `上一次输出未通过严格 JSON 校验：${reason}`,
+        "请重新输出完整 JSON，不要解释，不要省略任何输入 symbol。",
+        "每个 signals item 都必须包含全部必填字段，portfolio 输出尤其必须包含非空 evidence 数组和非空 risks 数组。",
+        "如果某只股票证据不足，也必须在 evidence 中写明基于哪些已给字段或数据缺口形成该判断，不得留空或省略字段。",
+      ].join("\n"),
+    },
+  ];
 }
 
 function normalizeLlmSignals(
@@ -430,7 +505,7 @@ async function scoreSymbolsBatchLlm(
     })),
   };
 
-  const messages = [
+  const messages: ChatMessage[] = [
     { role: "system" as const, content: STRATEGY_SYSTEM },
     { role: "user" as const, content: JSON.stringify(userPayload) },
   ];
@@ -443,13 +518,15 @@ async function scoreSymbolsBatchLlm(
     ? envPositiveInt("BACKTEST_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1))
     : envPositiveInt("SIGNALS_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1));
   const attempts = opts.bypassCache ? 1 : configuredAttempts;
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  let strictRetryUsed = false;
+  let attemptMessages = messages;
+  for (let attempt = 0; ; attempt++) {
     try {
-      const result = await chatDetailed(messages, {
+      const result = await chatDetailed(attemptMessages, {
         model,
         responseFormat: "json_object",
         temperature: attempt === 0 ? 0.2 : 0,
-        bypassCache: opts.bypassCache || attempt > 0,
+        bypassCache: opts.bypassCache || attempt > 0 || attemptMessages !== messages,
         timeoutMs,
       });
       if (!result.content.trim()) {
@@ -458,9 +535,19 @@ async function scoreSymbolsBatchLlm(
       return normalizeLlmSignals(result.content, snapshots, signalSource(result.cacheHit));
     } catch (e) {
       lastError = e;
-      if (attempt < attempts - 1) {
-        await sleep(500 * (attempt + 1));
+      const canUseConfiguredRetry = attempt < attempts - 1;
+      const canUseStrictRetry = !opts.bypassCache && !strictRetryUsed && isStrictLlmOutputError(e);
+      if (canUseStrictRetry && !canUseConfiguredRetry) {
+        strictRetryUsed = true;
       }
+      if (canUseConfiguredRetry || canUseStrictRetry) {
+        if (isStrictLlmOutputError(e)) {
+          attemptMessages = strictOutputRepairMessages(messages, e);
+        }
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      break;
     }
   }
   throw lastError;
@@ -510,7 +597,7 @@ async function scorePortfolioTargetsBatchLlm(
     }),
   };
 
-  const messages = [
+  const messages: ChatMessage[] = [
     { role: "system" as const, content: PORTFOLIO_STRATEGY_SYSTEM },
     { role: "user" as const, content: JSON.stringify(userPayload) },
   ];
@@ -519,13 +606,15 @@ async function scorePortfolioTargetsBatchLlm(
   let lastError: unknown;
   const configuredAttempts = envPositiveInt("SIGNALS_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1));
   const attempts = opts.bypassCache ? 1 : configuredAttempts;
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  let strictRetryUsed = false;
+  let attemptMessages = messages;
+  for (let attempt = 0; ; attempt++) {
     try {
-      const result = await chatDetailed(messages, {
+      const result = await chatDetailed(attemptMessages, {
         model: cfg.model,
         responseFormat: "json_object",
         temperature: attempt === 0 ? 0.2 : 0,
-        bypassCache: opts.bypassCache || attempt > 0,
+        bypassCache: opts.bypassCache || attempt > 0 || attemptMessages !== messages,
         timeoutMs,
       });
       if (!result.content.trim()) {
@@ -534,9 +623,19 @@ async function scorePortfolioTargetsBatchLlm(
       return normalizePortfolioSignals(result.content, snapshots, signalSource(result.cacheHit));
     } catch (e) {
       lastError = e;
-      if (attempt < attempts - 1) {
-        await sleep(500 * (attempt + 1));
+      const canUseConfiguredRetry = attempt < attempts - 1;
+      const canUseStrictRetry = !opts.bypassCache && !strictRetryUsed && isStrictLlmOutputError(e);
+      if (canUseStrictRetry && !canUseConfiguredRetry) {
+        strictRetryUsed = true;
       }
+      if (canUseConfiguredRetry || canUseStrictRetry) {
+        if (isStrictLlmOutputError(e)) {
+          attemptMessages = strictOutputRepairMessages(messages, e);
+        }
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      break;
     }
   }
   throw lastError;

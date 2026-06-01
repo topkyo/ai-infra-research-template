@@ -17,3 +17,24 @@ web/.cache/
 web/data/holdings.local.json
 /.claude/
 .monitor/
+.codegraph/
+
+# AgentStack local development layer
+.agentstack/
+.agents/skills/agentstack-*/
+.claude/skills/devloop/
+.claude/skills/brainstorming/
+.claude/skills/write-plan/
+.claude/skills/execute-plan/
+.claude/skills/finish/
+.opencode/skills/devloop/
+.opencode/skills/brainstorming/
+.opencode/skills/write-plan/
+.opencode/skills/execute-plan/
+.opencode/skills/finish/
+.opencode/agents/explorer.md
+.opencode/agents/reviewer.md
+.cursor/rules/agentstack.mdc
+scripts/agentstack
+scripts/agentstack-*
+# End AgentStack local development layer
