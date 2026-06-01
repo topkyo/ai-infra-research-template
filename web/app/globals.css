@@ -168,6 +168,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid rgba(37, 99, 235,
 .research-metrics span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
 .research-metrics strong { font-size: 17px; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .research-reason { color: var(--fg); font-size: 13px; line-height: 1.45; }
+.research-score { color: var(--muted); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .research-line { color: var(--muted); font-size: 12px; line-height: 1.45; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 8px; }
 .research-line span { color: var(--fg); font-weight: 650; }
 .research-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }

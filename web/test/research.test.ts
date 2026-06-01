@@ -95,6 +95,30 @@ test("buildResearchCandidates prioritizes open add trim and exit work over passi
   assert.match(candidates.find((candidate) => candidate.row.entry.symbol === "TRIM")?.candidateReason ?? "", /减仓复核/);
 });
 
+test("balanced scoring can rank strong research value above action-only candidates", () => {
+  const candidates = buildResearchCandidates([
+    row("ACTION", "open", { adjustedTargetWeight: 0.01, deltaWeight: 0.01, confidence: 0.2 }),
+    row("RESEARCH", "hold", { adjustedTargetWeight: 0.2, deltaWeight: 0.18, confidence: 1 }),
+  ]);
+
+  assert.equal(candidates[0].row.entry.symbol, "RESEARCH");
+  assert.ok(candidates[0].score > candidates[1].score);
+});
+
+test("score breakdown total matches candidate score", () => {
+  const candidate = buildResearchCandidates([
+    row("SCORE", "add", { adjustedTargetWeight: 0.12, deltaWeight: 0.07, confidence: 0.8 }),
+  ])[0];
+  const b = candidate.scoreBreakdown;
+
+  assert.equal(candidate.score, b.total);
+  assert.equal(b.total, Number((b.action + b.delta + b.target + b.confidence + b.holdingRisk + b.dataReview - b.noTargetPenalty).toFixed(3)));
+  assert.ok(b.action > 0);
+  assert.ok(b.delta > 0);
+  assert.ok(b.target > 0);
+  assert.ok(b.confidence > 0);
+});
+
 test("data gaps are exposed in candidates and research packs", () => {
   const candidates = buildResearchCandidates([
     row("GAP", "open", {
@@ -108,6 +132,8 @@ test("data gaps are exposed in candidates and research packs", () => {
   assert.deepEqual(candidates[0].dataGaps, ["missing_fundamental", "missing_peg"]);
   assert.match(candidates[0].candidateReason, /数据缺口需复核/);
   assert.match(pack, /missing_fundamental/);
+  assert.match(pack, /候选评分:/);
+  assert.match(pack, /评分拆解: 动作/);
   assert.doesNotMatch(pack, /订单已确认|客户确认|公告显示/);
 });
 

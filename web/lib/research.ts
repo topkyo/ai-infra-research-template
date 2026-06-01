@@ -46,6 +46,7 @@ export interface ResearchCandidate {
   row: ResearchRow;
   kind: ResearchCandidateKind;
   score: number;
+  scoreBreakdown: ResearchScoreBreakdown;
   candidateReason: string;
   dataGaps: string[];
   constraintWarnings: string[];
@@ -53,6 +54,17 @@ export interface ResearchCandidate {
 
 export interface ResearchCopyOptions {
   includePrivateAmounts?: boolean;
+}
+
+export interface ResearchScoreBreakdown {
+  action: number;
+  delta: number;
+  target: number;
+  confidence: number;
+  holdingRisk: number;
+  dataReview: number;
+  noTargetPenalty: number;
+  total: number;
 }
 
 const MAX_CANDIDATES = 6;
@@ -94,17 +106,17 @@ function constraintWarningsFor(row: ResearchRow): string[] {
 function actionBaseScore(action: PortfolioAction): number {
   switch (action) {
     case "open":
-      return 100;
+      return 70;
     case "add":
-      return 90;
+      return 64;
     case "exit":
-      return 88;
+      return 62;
     case "trim":
-      return 84;
+      return 60;
     case "hold":
-      return 35;
+      return 28;
     case "watch":
-      return 20;
+      return 14;
   }
 }
 
@@ -132,17 +144,39 @@ function candidateReason(row: ResearchRow, dataGaps: string[]): string {
   return [...new Set(reasons)].slice(0, 3).join(" / ");
 }
 
-function candidateScore(row: ResearchRow, dataGaps: string[]): number {
+function scorePart(value: number): number {
+  return Number(value.toFixed(3));
+}
+
+function candidateScoreBreakdown(row: ResearchRow, dataGaps: string[]): ResearchScoreBreakdown {
   const recommendation = row.recommendation;
   const action = recommendation.action;
-  const actionScore = actionBaseScore(action);
-  const deltaScore = Math.min(Math.abs(recommendation.deltaWeight), 0.25) * 240;
-  const targetScore = Math.min(recommendation.adjustedTargetWeight, 0.25) * 160;
-  const confidenceScore = recommendation.confidence * 30;
-  const holdingRiskScore = row.position && (action === "trim" || action === "exit") ? 28 : 0;
-  const dataReviewScore = dataGaps.length > 0 && recommendation.adjustedTargetWeight > 0 ? 12 : 0;
-  const noTargetPenalty = recommendation.adjustedTargetWeight <= 0 && !row.position ? 45 : 0;
-  return actionScore + deltaScore + targetScore + confidenceScore + holdingRiskScore + dataReviewScore - noTargetPenalty;
+  const actionScore = scorePart(actionBaseScore(action));
+  const deltaScore = scorePart(Math.min(Math.abs(recommendation.deltaWeight), 0.2) * 300);
+  const targetScore = scorePart(Math.min(recommendation.adjustedTargetWeight, 0.2) * 250);
+  const confidenceScore = scorePart(recommendation.confidence * 45);
+  const holdingRiskScore = scorePart(row.position && (action === "trim" || action === "exit") ? 20 : 0);
+  const dataReviewScore = scorePart(dataGaps.length > 0 && recommendation.adjustedTargetWeight > 0 ? 8 : 0);
+  const noTargetPenalty = scorePart(recommendation.adjustedTargetWeight <= 0 && !row.position ? 40 : 0);
+  const total = scorePart(
+    actionScore
+    + deltaScore
+    + targetScore
+    + confidenceScore
+    + holdingRiskScore
+    + dataReviewScore
+    - noTargetPenalty,
+  );
+  return {
+    action: actionScore,
+    delta: deltaScore,
+    target: targetScore,
+    confidence: confidenceScore,
+    holdingRisk: holdingRiskScore,
+    dataReview: dataReviewScore,
+    noTargetPenalty,
+    total,
+  };
 }
 
 export function buildResearchCandidates(
@@ -154,13 +188,15 @@ export function buildResearchCandidates(
     .map((row) => {
       const dataGaps = dataGapsFor(row);
       const constraintWarnings = constraintWarningsFor(row);
+      const scoreBreakdown = candidateScoreBreakdown(row, dataGaps);
       return {
         row,
         dataGaps,
         constraintWarnings,
         kind: candidateKind(row, dataGaps),
         candidateReason: candidateReason(row, dataGaps),
-        score: candidateScore(row, dataGaps),
+        score: scoreBreakdown.total,
+        scoreBreakdown,
       };
     })
     .filter((candidate) =>
@@ -199,6 +235,23 @@ function fieldSources(row: ResearchRow): string {
     .join("; ") || "unavailable";
 }
 
+function formatScore(value: number): string {
+  if (!Number.isFinite(value)) return "unavailable";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function scoreBreakdownText(breakdown: ResearchScoreBreakdown): string {
+  return [
+    `动作${formatScore(breakdown.action)}`,
+    `变化${formatScore(breakdown.delta)}`,
+    `目标${formatScore(breakdown.target)}`,
+    `置信${formatScore(breakdown.confidence)}`,
+    `持仓复核${formatScore(breakdown.holdingRisk)}`,
+    `数据复核${formatScore(breakdown.dataReview)}`,
+    `扣分${formatScore(breakdown.noTargetPenalty)}`,
+  ].join("; ");
+}
+
 export function formatResearchPack(
   candidate: ResearchCandidate,
   opts: ResearchCopyOptions = {},
@@ -220,6 +273,8 @@ export function formatResearchPack(
     "## 候选定位",
     `- 分类: ${candidate.kind}`,
     `- 入选理由: ${candidate.candidateReason}`,
+    `- 候选评分: ${formatScore(candidate.score)}`,
+    `- 评分拆解: ${scoreBreakdownText(candidate.scoreBreakdown)}`,
     `- 主题: ${row.entry.theme}`,
     `- 全球供应链: ${row.entry.global_supply ? "yes" : "no"}`,
     "",

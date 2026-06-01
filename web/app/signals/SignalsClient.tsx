@@ -136,6 +136,22 @@ function formatMoney(value: number | null | undefined): string {
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
 }
 
+function formatResearchScore(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatResearchScoreSummary(candidate: ReturnType<typeof buildResearchCandidates>[number]): string {
+  const breakdown = candidate.scoreBreakdown;
+  return [
+    `评分 ${formatResearchScore(candidate.score)}`,
+    `动作${formatResearchScore(breakdown.action)}`,
+    `变化${formatResearchScore(breakdown.delta)}`,
+    `目标${formatResearchScore(breakdown.target)}`,
+    `置信${formatResearchScore(breakdown.confidence)}`,
+  ].join(" · ");
+}
+
 const ACTION_LABEL: Record<PortfolioAction, string> = {
   open: "建仓",
   add: "加仓",
@@ -579,6 +595,7 @@ export default function SignalsClient() {
                     </div>
                   </div>
                   <p className="research-reason">{candidate.candidateReason}</p>
+                  <p className="research-score">{formatResearchScoreSummary(candidate)}</p>
                   <p className="research-line"><span>风险</span>{risk}</p>
                   <p className="research-line"><span>数据</span>{gaps.length ? gaps.join("; ") : "无明显缺口"}</p>
                   {constraints.length > 0 && (
