@@ -70,7 +70,8 @@ test("buildPortfolioRows enforces max positions and normalizes total target weig
   assert.equal(rows.find((row) => row.entry.symbol === "A")?.recommendation.adjustedTargetWeight, 0.5);
   assert.equal(rows.find((row) => row.entry.symbol === "B")?.recommendation.adjustedTargetWeight, 0.5);
   assert.equal(rows.find((row) => row.entry.symbol === "C")?.recommendation.adjustedTargetWeight, 0);
-  assert.match(rows.find((row) => row.entry.symbol === "C")?.recommendation.constraintWarnings[0] ?? "", /maxPositions/);
+  assert.match(rows.find((row) => row.entry.symbol === "A")?.recommendation.constraintWarnings[0] ?? "", /组合目标仓位合计超过 100%/);
+  assert.match(rows.find((row) => row.entry.symbol === "C")?.recommendation.constraintWarnings[0] ?? "", /超过最大持仓数 2/);
 });
 
 test("buildPortfolioRows derives portfolio actions from current and target weights", () => {

@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SITE_EYEBROW } from "@/lib/site";
 import { parseHoldingsText } from "@/lib/holdingsImport";
+import {
+  buildResearchCandidates,
+  formatDailyCandidatesPack,
+  formatResearchPack,
+  formatResearchPrompt,
+} from "@/lib/research";
 import type { UniverseEntry } from "@/lib/universe";
 
 type Phase = "loading" | "scoring";
@@ -156,6 +162,7 @@ export default function SignalsClient() {
   const [previewPositions, setPreviewPositions] = useState<DraftPosition[]>([]);
   const [setupErrors, setSetupErrors] = useState<string[]>([]);
   const [savingHoldings, setSavingHoldings] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const started = useRef(false);
 
   function resetOutput() {
@@ -272,6 +279,29 @@ export default function SignalsClient() {
     }
   }
 
+  async function copyText(label: string, text: string) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!ok) throw new Error("copy command failed");
+      }
+      setCopyStatus(`${label}已复制`);
+      window.setTimeout(() => setCopyStatus(null), 1800);
+    } catch (e) {
+      setCopyStatus(`复制失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   useEffect(() => {
     if (started.current) return;
     started.current = true;
@@ -284,6 +314,7 @@ export default function SignalsClient() {
     if (db !== da) return db - da;
     return b.recommendation.adjustedTargetWeight - a.recommendation.adjustedTargetWeight;
   }), [rows]);
+  const researchCandidates = useMemo(() => buildResearchCandidates(rows), [rows]);
   const actionCount = useMemo(() => ({
     open: rows.filter((r) => r.recommendation.action === "open").length,
     add: rows.filter((r) => r.recommendation.action === "add").length,
@@ -496,6 +527,86 @@ export default function SignalsClient() {
         </div>
       ) : null}
 
+      {researchCandidates.length > 0 && (
+        <div className="research-panel">
+          <div className="theme-title">
+            <div>
+              <strong>今日研究候选</strong>
+              <span>{researchCandidates.length} 只 · 复制到 LLM / 炼丹炉深聊</span>
+            </div>
+            <div className="research-actions">
+              {copyStatus && <span className={copyStatus.startsWith("复制失败") ? "neg" : "pos"}>{copyStatus}</span>}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => copyText("今日候选包", formatDailyCandidatesPack(researchCandidates))}
+              >
+                复制今日候选包
+              </button>
+            </div>
+          </div>
+          <div className="research-grid">
+            {researchCandidates.map((candidate) => {
+              const { row } = candidate;
+              const recommendation = row.recommendation;
+              const risk = recommendation.risks[0] ?? "—";
+              const gaps = candidate.dataGaps.slice(0, 2);
+              const constraints = candidate.constraintWarnings.slice(0, 2);
+              return (
+                <article className="research-card" key={row.entry.symbol}>
+                  <div className="research-card-head">
+                    <div>
+                      <div className="mono">{row.entry.symbol}</div>
+                      <strong>{row.entry.name}</strong>
+                    </div>
+                    <span className={`badge action-${recommendation.action}`}>{ACTION_LABEL[recommendation.action]}</span>
+                  </div>
+                  <div className="research-meta">
+                    <span>{candidate.kind}</span>
+                    <span>{row.entry.theme}</span>
+                    <span>置信 {formatPct(recommendation.confidence, 0)}</span>
+                  </div>
+                  <div className="research-metrics">
+                    <div>
+                      <span>目标</span>
+                      <strong>{formatPct(recommendation.adjustedTargetWeight)}</strong>
+                    </div>
+                    <div>
+                      <span>变化</span>
+                      <strong className={recommendation.deltaWeight > 0 ? "pos" : recommendation.deltaWeight < 0 ? "neg" : ""}>
+                        {formatSignedPct(recommendation.deltaWeight)}
+                      </strong>
+                    </div>
+                  </div>
+                  <p className="research-reason">{candidate.candidateReason}</p>
+                  <p className="research-line"><span>风险</span>{risk}</p>
+                  <p className="research-line"><span>数据</span>{gaps.length ? gaps.join("; ") : "无明显缺口"}</p>
+                  {constraints.length > 0 && (
+                    <p className="research-line"><span>约束</span>{constraints.join("; ")}</p>
+                  )}
+                  <div className="research-card-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => copyText(`${row.entry.symbol}研究包`, formatResearchPack(candidate))}
+                    >
+                      复制研究包
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => copyText(`${row.entry.symbol}Prompt`, formatResearchPrompt(candidate))}
+                    >
+                      复制 Prompt
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div className="theme-panel">
           <div className="theme-title">
@@ -527,6 +638,7 @@ export default function SignalsClient() {
                   <th>风险</th>
                   <th>失效条件</th>
                   <th>数据质量</th>
+                  <th>组合约束</th>
                 </tr>
               </thead>
               <tbody>
@@ -563,7 +675,10 @@ export default function SignalsClient() {
                     <td className="muted signal-reason">{recommendation.risks.join("; ")}</td>
                     <td className="muted signal-reason">{recommendation.invalidation}</td>
                     <td className="muted signal-reason">
-                      {[...(recommendation.dataQuality ?? []), ...(recommendation.constraintWarnings ?? []), ...(snapshot.dataErrors ?? [])].join("; ") || "—"}
+                      {[...(recommendation.dataQuality ?? []), ...(snapshot.dataErrors ?? [])].join("; ") || "—"}
+                    </td>
+                    <td className="muted signal-reason">
+                      {recommendation.constraintWarnings.join("; ") || "—"}
                     </td>
                   </tr>
                 ))}

@@ -158,10 +158,10 @@ export function buildPortfolioRows(
     let adjustedTargetWeight = kept.has(entry.symbol) ? target.targetWeight * normalizeRatio : 0;
     adjustedTargetWeight = Number(adjustedTargetWeight.toFixed(6));
     if (dropped.has(entry.symbol)) {
-      constraintWarnings.push(`target dropped by maxPositions=${portfolio.maxPositions}`);
+      constraintWarnings.push(`超过最大持仓数 ${portfolio.maxPositions}，目标仓位已置为 0`);
     }
     if (kept.has(entry.symbol) && normalizeRatio < 1) {
-      constraintWarnings.push("target normalized because total target weight exceeded 100%");
+      constraintWarnings.push("组合目标仓位合计超过 100%，已按比例压缩");
     }
     const targetValue = portfolio.equity * adjustedTargetWeight;
     const deltaWeight = Number((adjustedTargetWeight - currentWeight).toFixed(6));
