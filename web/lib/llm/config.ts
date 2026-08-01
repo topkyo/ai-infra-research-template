@@ -28,12 +28,15 @@ function resolveProvider(): LlmProvider {
   if (explicit === "deepseek" || explicit === "direct") {
     return "deepseek";
   }
+  // Prefer direct DeepSeek when both keys exist; OpenCode Go is an explicit opt-in.
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  if (deepseekKey && !isMockApiKey(deepseekKey)) return "deepseek";
   const goKey = process.env.OPENCODE_GO_API_KEY;
   if (goKey && !isMockApiKey(goKey)) return "opencode-go";
   return "deepseek";
 }
 
-/** Resolve LLM endpoint + credentials (OpenCode Go or direct DeepSeek). */
+/** Resolve LLM endpoint + credentials (direct DeepSeek recommended, or OpenCode Go). */
 export function resolveLlmConfig(): LlmConfig {
   const provider = resolveProvider();
   const model =

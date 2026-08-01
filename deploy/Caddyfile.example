@@ -1,0 +1,12 @@
+# Combo A — private research dashboard (Next.js web only).
+# Copy to your VPS, replace app.example.com, then reload Caddy.
+# pyserver (127.0.0.1:8001) is NOT exposed; web talks to it inside Docker.
+
+app.example.com {
+	# Optional Basic Auth — generate hash: caddy hash-password
+	# basicauth {
+	# 	admin JDJhJDE0$REPLACE_WITH_caddy_hash-password_OUTPUT
+	# }
+
+	reverse_proxy 127.0.0.1:3000
+}

@@ -5,7 +5,7 @@
 > 个人研究工具，不构成任何投资建议。<br>
 > 基于 [madeye/silicon-civilization-stock-trade](https://github.com/madeye/silicon-civilization-stock-trade) fork 后定制。
 
-静态展示页：<https://topkyo.github.io/topkyo-ai-infra-dashboard/>
+静态展示页：<https://topkyo.github.io/ai-infra-dashboard/>
 
 ## 核心能力
 
@@ -108,7 +108,7 @@ nvm use
 cd web
 npm install
 cp env.example.txt .env.local
-# 配置 OPENCODE_GO_API_KEY 或 DEEPSEEK_API_KEY
+# 配置 LLM_PROVIDER=deepseek 与 DEEPSEEK_API_KEY（或 opencode-go）
 npm run dev
 ```
 
@@ -134,8 +134,9 @@ npm run dev
 |---|---|
 | [docs/RESEARCH_WORKFLOW.md](docs/RESEARCH_WORKFLOW.md) | AI 基建一级过滤、5-6 只候选深挖、LLM/炼丹炉二级讨论流程。 |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | 本地运行、环境变量、缓存、LLM 调优、常用排障。 |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Docker Compose / VPS 部署完整交互应用。 |
-| [docs/README.md](docs/README.md) | GitHub Pages 静态快照说明。 |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | 生产部署：推荐组合 A（VPS 私有 Docker Compose + Caddy，Vercel 公开 `docs/` 快照）。 |
+| [docs/COMBO_A_RUNBOOK.md](docs/COMBO_A_RUNBOOK.md) | 组合 A 上机勾选清单（DNS、防火墙、Compose、Caddy、Vercel、验收）。 |
+| [docs/README.md](docs/README.md) | 公开静态快照说明（推荐 Vercel；GitHub Pages 备选）。 |
 | [pyserver/README.md](pyserver/README.md) | 市场数据 sidecar、端点、数据源优先级和响应元数据。 |
 | [scripts/macos/README.md](scripts/macos/README.md) | macOS launchd 本地系统服务。 |
 | [docs/TUSHARE-PERMISSIONS.md](docs/TUSHARE-PERMISSIONS.md) | Tushare 次级源权限参考。 |

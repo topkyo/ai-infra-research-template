@@ -36,13 +36,13 @@ Recent history uses concise imperative commit subjects, for example `Replace aks
 
 ## Security & Configuration Tips
 
-Copy `pyserver/env.example` to `pyserver/.env`; leave `TUSHARE_TOKEN` empty for free live data, or set a real token only when enabling Tushare secondary. Copy `web/env.example.txt` to `web/.env.local` and set `OPENCODE_GO_API_KEY` or `DEEPSEEK_API_KEY`, `PYSERVER_URL`, and LLM tuning vars as needed. Keep API keys and `web/data/holdings.local.json` local only.
+Copy `pyserver/env.example` to `pyserver/.env`; leave `TUSHARE_TOKEN` empty for free live data, or set a real token only when enabling Tushare secondary. Copy `web/env.example.txt` to `web/.env.local` and set `LLM_PROVIDER=deepseek` with `DEEPSEEK_API_KEY` (or `opencode-go` + `OPENCODE_GO_API_KEY`), `PYSERVER_URL`, and LLM tuning vars as needed. Keep API keys and `web/data/holdings.local.json` local only.
 
 **LLM workflows (do not drift from README):**
 
-- **Live signals** (`web/app/api/signals/route.ts`): portfolio-aware target weights, `mode=real|paper`; real mode requires valid `web/data/holdings.local.json` and returns `setup_required` before market/LLM calls when missing or invalid. Serial batched LLM via `SIGNALS_LLM_SCORE_BATCH_SIZE` (default 10), `LLM_MODEL`, `SIGNALS_LLM_TIMEOUT_MS` (900000 per batch for pro), route `maxDuration = 3600`.
-- **Backtest** (`web/app/api/backtest/route.ts`): per rebalance day, batched LLM inside each day, `BACKTEST_SIGNAL_CONCURRENCY` parallel days, `LLM_MODEL_BACKTEST`, route `maxDuration = 3600`.
-- **Universe refresh** (`web/app/api/universe/refresh/route.ts`): one LLM `proposeRefresh` call, `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` (900000 for pro), route `maxDuration = 900`.
+- **Live signals** (`web/app/api/signals/route.ts`): portfolio-aware target weights, `mode=real|paper`; real mode requires valid `web/data/holdings.local.json` and returns `setup_required` before market/LLM calls when missing or invalid. Serial batched LLM via `SIGNALS_LLM_SCORE_BATCH_SIZE` (default 10), `LLM_MODEL` (default `deepseek-v4-flash`), `SIGNALS_LLM_TIMEOUT_MS` (900000 per batch), route `maxDuration = 3600`.
+- **Backtest** (`web/app/api/backtest/route.ts`): per rebalance day, batched LLM inside each day, `BACKTEST_SIGNAL_CONCURRENCY` parallel days, `LLM_MODEL_BACKTEST` (default `deepseek-v4-flash`), route `maxDuration = 3600`.
+- **Universe refresh** (`web/app/api/universe/refresh/route.ts`): one LLM `proposeRefresh` call, `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` (900000), route `maxDuration = 900`.
 - Strict mode: no synthetic hold or synthetic target weights on LLM failure; see README “LLM 工作流”.
 
 ## 严肃看盘数据完整性规则

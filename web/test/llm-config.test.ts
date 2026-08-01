@@ -29,3 +29,14 @@ test("resolveLlmConfig picks direct deepseek when LLM_PROVIDER=deepseek", async 
   delete process.env.DEEPSEEK_API_KEY;
   delete process.env.DEEPSEEK_BASE_URL;
 });
+
+test("resolveLlmConfig prefers deepseek over opencode-go when both keys set and provider unset", async () => {
+  delete process.env.LLM_PROVIDER;
+  process.env.DEEPSEEK_API_KEY = "sk-direct";
+  process.env.OPENCODE_GO_API_KEY = "sk-go-key";
+  const { resolveLlmConfig } = await import("../lib/llm/config");
+  const cfg = resolveLlmConfig();
+  assert.equal(cfg.provider, "deepseek");
+  delete process.env.DEEPSEEK_API_KEY;
+  delete process.env.OPENCODE_GO_API_KEY;
+});

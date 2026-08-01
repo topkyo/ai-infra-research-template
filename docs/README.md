@@ -1,8 +1,13 @@
 # docs/ 静态快照
 
-`docs/` 用于 GitHub Pages 展示最近一次研究快照。它不运行 Next.js，不访问私有 API key，只读取 `docs/data/*.json`。
+`docs/` 用于公开展示最近一次研究快照。它不运行 Next.js，不访问私有 API key，只读取 `docs/data/*.json`。
 
-线上地址：<https://topkyo.github.io/topkyo-ai-infra-dashboard/>
+**推荐部署：** [Vercel](https://vercel.com) 静态托管（组合 A 公开平面）。在 Vercel 新建项目时：
+
+- **Root Directory** = `docs`
+- **Framework Preset** = Other（无构建步骤）
+
+**备选：** [GitHub Pages](https://topkyo.github.io/ai-infra-dashboard/) 仍可托管同一份静态文件。
 
 ## 内容
 
@@ -38,7 +43,7 @@ cd web
 SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
 ```
 
-刷新后提交 `docs/data/` 即可更新 GitHub Pages。
+刷新后提交并部署 `docs/data/` 即可更新公开快照（Vercel Git 集成会自动部署，或通过 Vercel CLI / Dashboard 手动触发；GitHub Pages 则 push 到默认分支即可）。
 
 ## 预览
 

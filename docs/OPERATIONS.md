@@ -98,8 +98,8 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 
 | 变量 | 默认 | 说明 |
 |---|---:|---|
-| `LLM_PROVIDER` | `opencode-go` | `opencode-go` 或 `deepseek`。 |
-| `LLM_MODEL` | `deepseek-v4-pro` | 实时信号模型。 |
+| `LLM_PROVIDER` | `deepseek` | 推荐直连 `deepseek`（官方 Flash-0731）；可选 `opencode-go` 作备用。 |
+| `LLM_MODEL` | `deepseek-v4-flash` | 实时信号与股票池刷新模型。默认与回测同用 Flash，避免信号/回测模型不一致；Pro 有实质升级后再单独设 `deepseek-v4-pro`。 |
 | `LLM_MODEL_BACKTEST` | `deepseek-v4-flash` | 回测调仓日模型。 |
 | `SIGNALS_LLM_SCORE_BATCH_SIZE` | `10` | 实时信号 LLM 批大小，串行执行。 |
 | `SIGNALS_LLM_TIMEOUT_MS` | `900000` | 实时信号单批 LLM 超时。 |
@@ -165,7 +165,7 @@ python3 -m http.server 8765 --directory docs
 | `/api/signals` HTTP 500 且出现 `ERR_DLOPEN_FAILED` | `nvm use && ./scripts/rebuild-native-modules.sh`，再重启 Web。 |
 | 首页无行情 | `curl http://127.0.0.1:8001/health`，确认 `PYSERVER_URL=http://localhost:8001`。 |
 | 信号超时 | 减小 `SIGNALS_LLM_SCORE_BATCH_SIZE`，增大 `SIGNALS_LLM_TIMEOUT_MS`，查看 Web 日志。 |
-| 信号返回 `opencode-go 503` | 上游临时不可用会自动做传输层重试；仍失败时减小 `SIGNALS_LLM_SCORE_BATCH_SIZE`，或临时切到 `LLM_PROVIDER=deepseek`。 |
+| 信号返回 LLM `503` / 超时 | 传输层会自动重试；仍失败时减小 `SIGNALS_LLM_SCORE_BATCH_SIZE`，确认 `LLM_PROVIDER=deepseek` 与 `DEEPSEEK_API_KEY`，或临时改用 `opencode-go`。 |
 | 回测超时 | 缩短日期区间，降低 `BACKTEST_SIGNAL_CONCURRENCY` 或减小 `BACKTEST_LLM_SCORE_BATCH_SIZE`。 |
 | Tushare 权限错误 | 默认关闭 Tushare 次级源；确需启用时参考 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。 |
 | 同一工作区构建异常 | 避免同时运行 `npm run dev` 和 `npm run build`。 |
@@ -178,3 +178,7 @@ cd web && ./node_modules/.bin/tsc --noEmit
 cd web && npm run build
 cd pyserver && uv run python -m py_compile main.py
 ```
+
+## 生产部署
+
+线上推荐 **组合 A**（VPS 私有研究台 + Vercel 公开快照）。上机勾选清单见 [COMBO_A_RUNBOOK.md](COMBO_A_RUNBOOK.md)；完整步骤见 [DEPLOY.md](DEPLOY.md)。
