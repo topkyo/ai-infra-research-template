@@ -5,7 +5,7 @@
 > 个人研究工具，不构成任何投资建议。<br>
 > 基于 [madeye/silicon-civilization-stock-trade](https://github.com/madeye/silicon-civilization-stock-trade) fork 后定制。
 
-静态展示页：<https://topkyo.github.io/ai-infra-dashboard/>
+静态展示页：<https://ai-infra-dashboard-docs.vercel.app>
 
 ## 核心能力
 
@@ -15,7 +15,7 @@
 | 行情与一致预期 | FastAPI sidecar 聚合现价、估值、成长、评级和隐含目标参考。 |
 | 组合持仓信号 | 结合真实或模拟持仓生成 5-20 个交易日目标仓位；失败时显式不可用，不合成伪结论。 |
 | 严格回测 | 按调仓周期重配，支持基准指数、单边费率、信号缓存和结果存档。 |
-| 静态快照 | 输出 `docs/data/*.json`，用于 GitHub Pages 公开展示最近一次研究快照。 |
+| 静态快照 | 输出 `docs/data/*.json`，用于 Vercel（或 Pages）公开展示最近一次研究快照。 |
 
 ## 产品界面
 

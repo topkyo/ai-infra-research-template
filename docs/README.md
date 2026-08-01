@@ -2,12 +2,16 @@
 
 `docs/` 用于公开展示最近一次研究快照。它不运行 Next.js，不访问私有 API key，只读取 `docs/data/*.json`。
 
-**推荐部署：** [Vercel](https://vercel.com) 静态托管（组合 A 公开平面）。在 Vercel 新建项目时：
+**线上（Vercel）：** <https://ai-infra-dashboard-docs.vercel.app>
 
-- **Root Directory** = `docs`
-- **Framework Preset** = Other（无构建步骤）
+项目：`ai-infra-dashboard-docs`（Root Directory = `docs`，Framework = Other，无构建）。本地已登录 CLI 时可：
 
-**备选：** [GitHub Pages](https://topkyo.github.io/ai-infra-dashboard/) 仍可托管同一份静态文件。
+```bash
+./scripts/deploy-public-snapshot.sh
+# 或：vercel deploy --prod --yes --cwd docs
+```
+
+**备选：** GitHub Pages（需在仓库 Settings 启用 Pages）仍可托管同一份静态文件。
 
 ## 内容
 
