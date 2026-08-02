@@ -3,93 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SITE_EYEBROW } from "@/lib/site";
-import { readNdjsonStream } from "@/lib/ndjson";
-import { parseHoldingsText } from "@/lib/holdingsImport";
+import HoldingsSetup from "./HoldingsSetup";
+import ResearchPanel from "./ResearchPanel";
+import SignalsTable from "./SignalsTable";
+import { formatMoney } from "./format";
 import {
-  buildResearchCandidates,
-  formatDailyCandidatesPack,
-  formatResearchPack,
-  formatResearchPrompt,
-} from "@/lib/research";
-import type { UniverseEntry } from "@/lib/universe";
-
-type Phase = "loading" | "scoring";
-type PortfolioAction = "open" | "add" | "hold" | "trim" | "exit" | "watch";
-type PortfolioMode = "real" | "paper";
-
-interface Progress {
-  phase: Phase;
-  done: number;
-  total: number;
-}
-
-interface SignalRow {
-  entry: UniverseEntry;
-  snapshot: {
-    symbol: string;
-    name?: string | null;
-    theme?: string;
-    latestDate?: string | null;
-    closes: number[];
-    dataErrors?: string[];
-    fundamentalSource?: string | null;
-    fundamentalFieldSources?: Record<string, string> | null;
-    fundamental?: {
-      pe_ttm?: number | null;
-      pb?: number | null;
-      market_cap?: number | null;
-      profit_yoy?: number | null;
-    };
-  };
-  position: {
-    symbol: string;
-    shares: number;
-    costBasis: number;
-    currentPrice: number;
-    currentValue: number;
-    currentWeight: number;
-    unrealizedPnlPct: number | null;
-  } | null;
-  recommendation: {
-    action: PortfolioAction;
-    targetWeight: number;
-    adjustedTargetWeight: number;
-    deltaWeight: number;
-    targetValue: number;
-    deltaValue: number;
-    confidence: number;
-    rationale: string;
-    evidence: string[];
-    risks: string[];
-    invalidation: string;
-    source?: "llm-live" | "llm-cache";
-    dataQuality?: string[];
-    constraintWarnings: string[];
-  };
-}
-
-interface PortfolioContext {
-  mode: PortfolioMode;
-  cash: number;
-  equity: number;
-  maxPositions: number;
-  asOf: string;
-  holdingsUpdatedAt?: string;
-  holdingsFileFound: boolean;
-  warnings: string[];
-}
-
-interface SetupRequired {
-  code: "holdings_missing" | "holdings_invalid";
-  message: string;
-  filePath: string;
-}
-
-interface DraftPosition {
-  symbol: string;
-  shares: number;
-  cost_basis: number;
-}
+  useSignalStream,
+  type Phase,
+  type PortfolioMode,
+  type Progress,
+} from "./useSignalStream";
 
 const PHASE_LABEL: Record<Phase, string> = {
   loading: "加载行情、基本面与持仓",
@@ -101,11 +24,6 @@ const PHASE_WEIGHT: Record<Phase, number> = {
   scoring: 0.35,
 };
 
-function calcPeg(pe?: number | null, profitYoyPct?: number | null) {
-  if (pe == null || profitYoyPct == null || pe <= 0 || profitYoyPct <= 0) return null;
-  return pe / profitYoyPct;
-}
-
 function progressPct(progress: Progress | null): number {
   if (!progress) return 0;
   const current = progress.total > 0 ? progress.done / progress.total : 0;
@@ -113,84 +31,23 @@ function progressPct(progress: Progress | null): number {
   return Math.min(100, Math.round((PHASE_WEIGHT.loading + current * PHASE_WEIGHT.scoring) * 100));
 }
 
-function formatFieldSources(sources?: Record<string, string> | null): string {
-  if (!sources || Object.keys(sources).length === 0) return "—";
-  return Object.entries(sources)
-    .filter(([field]) => ["pe_ttm", "pb", "market_cap", "profit_yoy"].includes(field))
-    .map(([field, source]) => `${field}:${source}`)
-    .join("; ") || "—";
-}
-
-function formatPct(value: number | null | undefined, digits = 1): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return `${(value * 100).toFixed(digits)}%`;
-}
-
-function formatSignedPct(value: number | null | undefined, digits = 1): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  const pct = value * 100;
-  return `${pct > 0 ? "+" : ""}${pct.toFixed(digits)}%`;
-}
-
-function formatMoney(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return value.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
-}
-
-function formatResearchScore(value: number): string {
-  if (!Number.isFinite(value)) return "—";
-  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
-}
-
-function formatResearchScoreSummary(candidate: ReturnType<typeof buildResearchCandidates>[number]): string {
-  const breakdown = candidate.scoreBreakdown;
-  return [
-    `评分 ${formatResearchScore(candidate.score)}`,
-    `动作${formatResearchScore(breakdown.action)}`,
-    `变化${formatResearchScore(breakdown.delta)}`,
-    `目标${formatResearchScore(breakdown.target)}`,
-    `置信${formatResearchScore(breakdown.confidence)}`,
-  ].join(" · ");
-}
-
-const ACTION_LABEL: Record<PortfolioAction, string> = {
-  open: "建仓",
-  add: "加仓",
-  hold: "持有",
-  trim: "减仓",
-  exit: "清仓",
-  watch: "观望",
-};
-
-const HOLDINGS_PASTE_SAMPLE = `证券代码\t持仓数量\t成本价
-688256\t100\t120.5`;
-
 export default function SignalsClient() {
   const [mode, setMode] = useState<PortfolioMode>("real");
   const [paperCash, setPaperCash] = useState(1_000_000);
-  const [rows, setRows] = useState<SignalRow[]>([]);
-  const [portfolio, setPortfolio] = useState<PortfolioContext | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [setupRequired, setSetupRequired] = useState<SetupRequired | null>(null);
-  const [setupCash, setSetupCash] = useState(100000);
-  const [holdingsText, setHoldingsText] = useState("");
-  const [previewPositions, setPreviewPositions] = useState<DraftPosition[]>([]);
-  const [setupErrors, setSetupErrors] = useState<string[]>([]);
-  const [savingHoldings, setSavingHoldings] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
-  const [notices, setNotices] = useState<string[]>([]);
+  const {
+    rows,
+    portfolio,
+    progress,
+    loading,
+    error,
+    setupRequired,
+    notices,
+    setError,
+    setSetupRequired,
+    run,
+    resetOutput,
+  } = useSignalStream({ mode, paperCash });
   const started = useRef(false);
-
-  function resetOutput() {
-    setError(null);
-    setRows([]);
-    setPortfolio(null);
-    setProgress(null);
-    setSetupRequired(null);
-    setNotices([]);
-  }
 
   function selectMode(nextMode: PortfolioMode) {
     setMode(nextMode);
@@ -202,113 +59,10 @@ export default function SignalsClient() {
     void run("paper");
   }
 
-  function parseSetupText(text = holdingsText) {
-    const result = parseHoldingsText(text);
-    setPreviewPositions(result.positions);
-    setSetupErrors(result.errors);
-    if (result.cash != null) setSetupCash(result.cash);
-    return result;
-  }
-
-  async function saveHoldingsAndRun() {
-    const parsed = previewPositions.length > 0 && setupErrors.length === 0
-      ? { positions: previewPositions, errors: setupErrors, cash: undefined }
-      : parseSetupText();
-    if (parsed.errors.length > 0 || parsed.positions.length === 0) return;
-    const cash = parsed.cash ?? setupCash;
-    setSavingHoldings(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/holdings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cash,
-          positions: parsed.positions,
-        }),
-      });
-      const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
-      if (!response.ok || payload.ok !== true) {
-        throw new Error(payload.error ?? `HTTP ${response.status}`);
-      }
-      setSetupRequired(null);
-      setMode("real");
-      await run("real");
-    } catch (e) {
-      setSetupErrors([e instanceof Error ? e.message : String(e)]);
-    } finally {
-      setSavingHoldings(false);
-    }
-  }
-
-  async function run(requestedMode = mode) {
-    setLoading(true);
-    resetOutput();
-    try {
-      const response = await fetch("/api/signals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: requestedMode,
-          paperCash: requestedMode === "paper" ? paperCash : undefined,
-        }),
-      });
-      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-      type Evt =
-        | { type: "progress"; phase: Phase; done: number; total: number }
-        | { type: "result"; portfolio: PortfolioContext; rows: SignalRow[] }
-        | { type: "setup_required"; code: "holdings_missing" | "holdings_invalid"; message: string; filePath: string }
-        | { type: "error"; message: string };
-      await readNdjsonStream<Evt>(response.body, (evt) => {
-        if (evt.type === "progress") {
-          setProgress({ phase: evt.phase, done: evt.done, total: evt.total });
-        } else if (evt.type === "result") {
-          setRows(evt.rows);
-          setPortfolio(evt.portfolio);
-        } else if (evt.type === "setup_required") {
-          setRows([]);
-          setPortfolio(null);
-          setSetupRequired({
-            code: evt.code,
-            message: evt.message,
-            filePath: evt.filePath,
-          });
-        } else {
-          setRows([]);
-          setPortfolio(null);
-          setError(evt.message);
-        }
-      }, (line) => {
-        setNotices((prev) => [...prev, `跳过无法解析的响应行（${line.length} 字符）`]);
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function copyText(label: string, text: string) {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.setAttribute("readonly", "true");
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(textarea);
-        if (!ok) throw new Error("copy command failed");
-      }
-      setCopyStatus(`${label}已复制`);
-      window.setTimeout(() => setCopyStatus(null), 1800);
-    } catch (e) {
-      setCopyStatus(`复制失败：${e instanceof Error ? e.message : String(e)}`);
-    }
+  async function handleHoldingsSaved() {
+    setSetupRequired(null);
+    setMode("real");
+    await run("real");
   }
 
   useEffect(() => {
@@ -317,13 +71,6 @@ export default function SignalsClient() {
     void run("real");
   }, []);
 
-  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
-    const da = Math.abs(a.recommendation.deltaWeight);
-    const db = Math.abs(b.recommendation.deltaWeight);
-    if (db !== da) return db - da;
-    return b.recommendation.adjustedTargetWeight - a.recommendation.adjustedTargetWeight;
-  }), [rows]);
-  const researchCandidates = useMemo(() => buildResearchCandidates(rows), [rows]);
   const actionCount = useMemo(() => ({
     open: rows.filter((r) => r.recommendation.action === "open").length,
     add: rows.filter((r) => r.recommendation.action === "add").length,
@@ -416,95 +163,15 @@ export default function SignalsClient() {
       )}
 
       {setupRequired && (
-        <div className="card setup-card">
-          <div className="setup-copy">
-            <strong>配置真实持仓</strong>
-            <p>{setupRequired.message}</p>
-          </div>
-          <div className="setup-form-grid">
-            <label className="field">
-              <span>可用现金</span>
-              <input
-                type="number"
-                min={0}
-                step={1000}
-                value={setupCash}
-                onChange={(e) => setSetupCash(Math.max(0, Number(e.target.value) || 0))}
-                disabled={loading || savingHoldings}
-              />
-            </label>
-            <label className="field setup-paste-field">
-              <span>粘贴持仓明细</span>
-              <textarea
-                value={holdingsText}
-                placeholder={HOLDINGS_PASTE_SAMPLE}
-                onChange={(e) => {
-                  setHoldingsText(e.target.value);
-                  setPreviewPositions([]);
-                  setSetupErrors([]);
-                }}
-                disabled={loading || savingHoldings}
-                spellCheck={false}
-              />
-            </label>
-          </div>
-          {setupErrors.length > 0 && (
-            <div className="setup-errors">
-              {setupErrors.map((message) => (
-                <div key={message}>{message}</div>
-              ))}
-            </div>
-          )}
-          {previewPositions.length > 0 && (
-            <div className="setup-preview">
-              <div className="theme-title">
-                <strong>导入预览</strong>
-                <span>{previewPositions.length} 只 · 现金 {formatMoney(setupCash)}</span>
-              </div>
-              <div className="table-wrap compact-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>代码</th>
-                      <th className="num">持仓数量</th>
-                      <th className="num">成本价</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewPositions.map((position) => (
-                      <tr key={position.symbol}>
-                        <td className="mono">{position.symbol}</td>
-                        <td className="num">{formatMoney(position.shares)}</td>
-                        <td className="num">{position.cost_basis.toFixed(3).replace(/\.?0+$/, "")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          <div className="setup-actions">
-            <button type="button" onClick={() => parseSetupText()} disabled={loading || savingHoldings}>
-              解析预览
-            </button>
-            <button
-              type="button"
-              onClick={saveHoldingsAndRun}
-              disabled={loading || savingHoldings || previewPositions.length === 0 || setupErrors.length > 0}
-            >
-              {savingHoldings ? "保存中…" : "保存并运行"}
-            </button>
-            <button type="button" className="secondary" onClick={() => run("real")} disabled={loading}>
-              重新检测真实持仓
-            </button>
-            <button type="button" className="secondary" onClick={runPaperMode} disabled={loading || savingHoldings}>
-              用 {formatMoney(paperCash)} 模拟运行
-            </button>
-          </div>
-          <div className="setup-details">
-            <div className="setup-path">路径 <code>{setupRequired.filePath}</code></div>
-          </div>
-        </div>
+        <HoldingsSetup
+          setupRequired={setupRequired}
+          loading={loading}
+          paperCash={paperCash}
+          onClearError={() => setError(null)}
+          onSaved={handleHoldingsSaved}
+          onRetryReal={() => { void run("real"); }}
+          onRunPaper={runPaperMode}
+        />
       )}
 
       {portfolio && (
@@ -542,167 +209,9 @@ export default function SignalsClient() {
         </div>
       ) : null}
 
-      {researchCandidates.length > 0 && (
-        <div className="research-panel">
-          <div className="theme-title">
-            <div>
-              <strong>今日研究候选</strong>
-              <span>{researchCandidates.length} 只 · 复制到 LLM / 炼丹炉深聊</span>
-            </div>
-            <div className="research-actions">
-              {copyStatus && <span className={copyStatus.startsWith("复制失败") ? "neg" : "pos"}>{copyStatus}</span>}
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => copyText("今日候选包", formatDailyCandidatesPack(researchCandidates))}
-              >
-                复制今日候选包
-              </button>
-            </div>
-          </div>
-          <div className="research-grid">
-            {researchCandidates.map((candidate) => {
-              const { row } = candidate;
-              const recommendation = row.recommendation;
-              const risk = recommendation.risks[0] ?? "—";
-              const gaps = candidate.dataGaps.slice(0, 2);
-              const constraints = candidate.constraintWarnings.slice(0, 2);
-              return (
-                <article className="research-card" key={row.entry.symbol}>
-                  <div className="research-card-head">
-                    <div>
-                      <div className="mono">{row.entry.symbol}</div>
-                      <strong>{row.entry.name}</strong>
-                    </div>
-                    <span className={`badge action-${recommendation.action}`}>{ACTION_LABEL[recommendation.action]}</span>
-                  </div>
-                  <div className="research-meta">
-                    <span>{candidate.kind}</span>
-                    <span>{row.entry.theme}</span>
-                    <span>置信 {formatPct(recommendation.confidence, 0)}</span>
-                  </div>
-                  <div className="research-metrics">
-                    <div>
-                      <span>目标</span>
-                      <strong>{formatPct(recommendation.adjustedTargetWeight)}</strong>
-                    </div>
-                    <div>
-                      <span>变化</span>
-                      <strong className={recommendation.deltaWeight > 0 ? "pos" : recommendation.deltaWeight < 0 ? "neg" : ""}>
-                        {formatSignedPct(recommendation.deltaWeight)}
-                      </strong>
-                    </div>
-                  </div>
-                  <p className="research-reason">{candidate.candidateReason}</p>
-                  <p className="research-score">{formatResearchScoreSummary(candidate)}</p>
-                  <p className="research-line"><span>风险</span>{risk}</p>
-                  <p className="research-line"><span>数据</span>{gaps.length ? gaps.join("; ") : "无明显缺口"}</p>
-                  {constraints.length > 0 && (
-                    <p className="research-line"><span>约束</span>{constraints.join("; ")}</p>
-                  )}
-                  <div className="research-card-actions">
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => copyText(`${row.entry.symbol}研究包`, formatResearchPack(candidate))}
-                    >
-                      复制研究包
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => copyText(`${row.entry.symbol}Prompt`, formatResearchPrompt(candidate))}
-                    >
-                      复制 Prompt
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <ResearchPanel rows={rows} />
 
-      {rows.length > 0 && (
-        <div className="theme-panel">
-          <div className="theme-title">
-            <strong>目标仓位</strong>
-            <span>{rows.length} 只 · 按调仓差额排序</span>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>代码</th>
-                  <th>名称</th>
-                  <th>主题</th>
-                  <th>动作</th>
-                  <th className="num">当前仓位</th>
-                  <th className="num">目标仓位</th>
-                  <th className="num">调仓差额</th>
-                  <th className="num">差额金额</th>
-                  <th className="num">浮盈亏</th>
-                  <th className="num">最近收盘</th>
-                  <th className="num">置信度</th>
-                  <th className="num">PE(TTM)</th>
-                  <th className="num">利润同比</th>
-                  <th className="num">PEG</th>
-                  <th>LLM来源</th>
-                  <th>数据源</th>
-                  <th>理由</th>
-                  <th>证据</th>
-                  <th>风险</th>
-                  <th>失效条件</th>
-                  <th>数据质量</th>
-                  <th>组合约束</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRows.map(({ entry, recommendation, snapshot, position }) => (
-                  <tr key={entry.symbol}>
-                    <td className="mono">{entry.symbol}</td>
-                    <td>{entry.name}</td>
-                    <td>{entry.theme}</td>
-                    <td><span className={`badge action-${recommendation.action}`}>{ACTION_LABEL[recommendation.action]}</span></td>
-                    <td className="num">{formatPct(position?.currentWeight)}</td>
-                    <td className="num">{formatPct(recommendation.adjustedTargetWeight)}</td>
-                    <td className={`num ${recommendation.deltaWeight > 0 ? "pos" : recommendation.deltaWeight < 0 ? "neg" : "muted"}`}>
-                      {formatSignedPct(recommendation.deltaWeight)}
-                    </td>
-                    <td className={`num ${recommendation.deltaValue > 0 ? "pos" : recommendation.deltaValue < 0 ? "neg" : "muted"}`}>
-                      {recommendation.deltaValue > 0 ? "+" : ""}{formatMoney(recommendation.deltaValue)}
-                    </td>
-                    <td className={`num ${position?.unrealizedPnlPct == null ? "muted" : position.unrealizedPnlPct >= 0 ? "pos" : "neg"}`}>
-                      {position?.unrealizedPnlPct == null ? "—" : `${position.unrealizedPnlPct > 0 ? "+" : ""}${position.unrealizedPnlPct.toFixed(1)}%`}
-                    </td>
-                    <td className="num">{snapshot.closes.at(-1)?.toFixed(2) ?? "—"}</td>
-                    <td className="num">{formatPct(recommendation.confidence, 0)}</td>
-                    <td className="num">{snapshot.fundamental?.pe_ttm?.toFixed(1) ?? "—"}</td>
-                    <td className="num">{snapshot.fundamental?.profit_yoy != null ? `${snapshot.fundamental.profit_yoy.toFixed(1)}%` : "—"}</td>
-                    <td className="num">{calcPeg(snapshot.fundamental?.pe_ttm, snapshot.fundamental?.profit_yoy)?.toFixed(2) ?? "—"}</td>
-                    <td><span className={`badge ${recommendation.source ?? ""}`}>{recommendation.source ?? "—"}</span></td>
-                    <td className="muted signal-reason">
-                      {[snapshot.fundamentalSource, formatFieldSources(snapshot.fundamentalFieldSources)]
-                        .filter((part) => part && part !== "—")
-                        .join("; ") || "—"}
-                    </td>
-                    <td className="muted signal-reason">{recommendation.rationale}</td>
-                    <td className="muted signal-reason">{recommendation.evidence.join("; ")}</td>
-                    <td className="muted signal-reason">{recommendation.risks.join("; ")}</td>
-                    <td className="muted signal-reason">{recommendation.invalidation}</td>
-                    <td className="muted signal-reason">
-                      {[...(recommendation.dataQuality ?? []), ...(snapshot.dataErrors ?? [])].join("; ") || "—"}
-                    </td>
-                    <td className="muted signal-reason">
-                      {recommendation.constraintWarnings.join("; ") || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <SignalsTable rows={rows} />
     </div>
   );
 }
