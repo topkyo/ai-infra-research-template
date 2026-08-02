@@ -113,8 +113,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
 | tunnel | `~/scripts/tunnel-watch.sh` | */5 | Tunnel URL 同步 + 外网 `/health` |
 | dashboard | [`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh) | 每小时（如 `7 * * * *`，按主机时区） | 研究台 Compose + 3000/8001 + 磁盘紧急兜底 |
 
-- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；**仅在至少一路 TG/Slack 发送成功后**写入冷却戳；dashboard 侧 `COOLDOWN_SEC` 默认 3600 秒）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）；healthcheck 会把 alert.sh 的输出一并捕获进 `.monitor/logs/vps-health-*.log`。以上 VPS 脚本已 vendor 到 [`deploy/vps-scripts/`](../deploy/vps-scripts/)（alert.sh 含 flock 冷却串行化补丁；密钥仅存 VPS 点文件），线上副本在 `~/scripts/` 与 EA 共用，改动以仓库为准两边同步。
-- 已知限制：任一通道发送成功即写冷却戳，另一通道故障在冷却期内不重试（失败仍记 `health-alerts.log`）；按通道拆分冷却戳待下批。
+- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；冷却戳**按通道**写入 `${key}.telegram` / `${key}.slack`，仅该通道发送成功后才 stamp；一路成功不会压住另一路重试；dashboard 侧 `COOLDOWN_SEC` 默认 3600 秒）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）；healthcheck 会把 alert.sh 的输出一并捕获进 `.monitor/logs/vps-health-*.log`。脚本已 vendor 到 [`deploy/vps-scripts/`](../deploy/vps-scripts/)（含 flock；密钥仅存 VPS 点文件），线上副本在 `~/scripts/`，改动以仓库为准两边同步。
 - **Dead-man's-switch（Healthchecks.io）**：`vps-healthcheck` 结束时 ping 外部看门狗——`fail=0` 打成功 URL，`fail≠0` 打 `{url}/fail`；cron 整段失踪则 HC 侧超时告警（TG/Slack 全挂时仍可感知）。配置：
   1. 在 [healthchecks.io](https://healthchecks.io) 建 Check：Period **1 hour**，Grace **1 hour**（对齐 `7 * * * *`）。
   2. 通知渠道用**独立邮箱**或另一 TG bot（尽量不与现网 webhook 完全同钥）。

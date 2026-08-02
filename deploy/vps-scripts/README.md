@@ -5,7 +5,7 @@
 
 | 脚本 | cron | 职责 | ALERT_KEY |
 |---|---|---|---|
-| `alert.sh` | (被调用) | Telegram + Slack 双通道发送,冷却戳**发送成功后**才写 | (由调用方传) |
+| `alert.sh` | (被调用) | Telegram + Slack 双通道发送;冷却戳**按通道**、**该通道发送成功后**才写（`${key}.telegram` / `${key}.slack`） | (由调用方传) |
 | `platform-watch.sh` | */5 | 磁盘 / 内存 | `disk`(3600s)/ `mem`(1800s) |
 | `proxy-watch.sh` | */5 | sing-box 服务 + 控制面 | `sing-box-unit` / `sing-box-ctrl` |
 | `ea-watch.sh` | */5 | EA API / Caddy / simulators / mosquitto / cloudflared unit | `ea-api-http` / `ea-caddy-http` / `unit-*` |
@@ -24,8 +24,8 @@ dashboard 侧脚本在仓库 `scripts/vps-healthcheck.sh`(每小时),其 `ALERT_
 
 ## 已知限制(待后续)
 
-- **部分通道掩盖**:任一通道(TG 或 Slack)发送成功即写冷却戳;另一通道的故障在冷却期内不重试,只记 `health-alerts.log`。后续可按通道拆分冷却戳。
 - **Dead-man's-switch**:已选型 Healthchecks.io 托管;由仓库 `scripts/vps-healthcheck.sh` 在结束时 ping(`~/scripts/.healthchecks-ping`)。见 Runbook §H。
+- 旧版单文件冷却戳 `$STATE_DIR/$key` 不再读取;部署后各通道可能各再推一次,属预期。
 - `tunnel-watch.sh` 是 EA 专有部署自动化(改写 EA 仓库 vercel.json 并 push),vendor 仅为监控表完整存档,dashboard 不依赖它。
 
 ## 参考 crontab
