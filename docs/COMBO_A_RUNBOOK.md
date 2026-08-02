@@ -111,10 +111,13 @@ ssh -L 3000:127.0.0.1:3000 goyun
 | proxy | `~/scripts/proxy-watch.sh` | */5 | sing-box |
 | ea | `~/scripts/ea-watch.sh` | */5 | EA API / Caddy / simulators / mosquitto / cloudflared unit |
 | tunnel | `~/scripts/tunnel-watch.sh` | */5 | Tunnel URL 同步 + 外网 `/health` |
-| dashboard | [`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh) | 每天 03:30 UTC | 研究台 Compose + 3000/8001 |
+| dashboard | [`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh) | 每小时（如 `7 * * * *`，按主机时区） | 研究台 Compose + 3000/8001 + 磁盘紧急兜底 |
 
-- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；**仅在至少一路 TG/Slack 发送成功后**写入冷却戳，默认 30–60 分钟）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）。
-- 磁盘 paging **仅** `platform-watch`（`ALERT_KEY=disk`，阈值 `DISK_WARN_PCT` 默认 85）；研究台 healthcheck 只记磁盘日志，避免双推。
+- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；**仅在至少一路 TG/Slack 发送成功后**写入冷却戳；dashboard 侧 `COOLDOWN_SEC` 默认 3600 秒）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）；healthcheck 会把 alert.sh 的输出一并捕获进 `.monitor/logs/vps-health-*.log`。
+- dashboard 的 `ALERT_KEY`：`dashboard-compose` / `dashboard-docker` / `dashboard-http` / `disk-crit`。
+- `alert.sh` 缺失或不可执行时，healthcheck 会把 WARN 经 fd 3 写到 cron stderr 并记日志，但**无法告警**；上机与巡检前置自检：`sudo -u <cron用户> test -x ~/scripts/alert.sh && echo alert-ok`。
+- 磁盘常规 paging **仅** `platform-watch`（`ALERT_KEY=disk`，阈值 `DISK_WARN_PCT` 默认 85），它是磁盘告警的强制依赖；healthcheck 低于 `DISK_CRIT_PCT`（默认 95）只记日志，达到阈值才兜底告警（`ALERT_KEY=disk-crit`，键不同，不与 platform-watch 双推）。
+- Compose 已带 `restart: unless-stopped` 与容器日志限额（json-file 10m×3），VPS 重启后服务自动拉起，容器 stdout 不会无限撑盘。
 - `health-watch.sh` 为兼容包装（`exec ea-watch.sh`），**勿再加入 cron**。
 - 日志轮转：`/etc/logrotate.d/ea-vps-scripts`（daily / 14 份 / `maxsize 20M`）。
 - 研究台日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`。

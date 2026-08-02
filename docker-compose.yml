@@ -1,10 +1,16 @@
 services:
   pyserver:
+    restart: unless-stopped
     build:
       context: ./pyserver
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:8001:8001"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       TUSHARE_TOKEN: ${TUSHARE_TOKEN:-mock}
       PYSERVER_CACHE_DB: /app/cache-data/cache.db
@@ -12,11 +18,17 @@ services:
       - pyserver-cache:/app/cache-data
 
   web:
+    restart: unless-stopped
     build:
       context: ./web
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:3000:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - ./private/holdings.local.json:/app/data/holdings.local.json
       - web-cache:/app/.cache
