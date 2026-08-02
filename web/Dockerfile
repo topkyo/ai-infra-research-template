@@ -23,4 +23,8 @@ COPY --from=builder /app/data ./data
 # prestart runs ensure-better-sqlite3 + fix-next-server-chunks
 COPY --from=builder /app/scripts ./scripts
 EXPOSE 3000
+# node:22-slim has no curl/wget; Node 22 ships global fetch. docker-compose.yml
+# overrides this with the same check — keep both in sync.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["npm", "run", "start", "--", "-p", "3000"]
