@@ -3,7 +3,8 @@ import { fetchAnalysts, type Analyst } from "@/lib/pyserver";
 
 export const runtime = "nodejs";
 
-const ANALYST_TIMEOUT_MS = Number(process.env.ANALYST_TIMEOUT_MS ?? 8_000);
+// pyserver /analysts is serial (~3–4s/symbol cold); UI batches 8 → need ≥30s+.
+const ANALYST_TIMEOUT_MS = Number(process.env.ANALYST_TIMEOUT_MS ?? 60_000);
 
 function timeout(ms: number): Promise<never> {
   return new Promise((_, reject) => {
