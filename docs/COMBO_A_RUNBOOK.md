@@ -101,6 +101,17 @@ ssh -L 3000:127.0.0.1:3000 goyun
 - [ ] 日常更新公开快照：`snapshot.ts` → 提交 `docs/data/` → Vercel 自动或手动部署。
 - [ ] 持仓文件权限建议：`chmod 600 private/holdings.local.json`。
 
+## H. 磁盘与监控
+
+- 日常健康检查脚本：[`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh)（磁盘占用、Compose、本机 3000/8001）。
+- 建议 cron（每天 03:30 UTC）：
+  ```bash
+  crontab -e
+  # 30 3 * * * /home/tim/github/ai-infra-dashboard/scripts/vps-healthcheck.sh
+  ```
+- 日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`；磁盘默认告警阈值 `DISK_WARN_PCT=85`。
+- 清理提示：`docker builder prune -af`、`docker image prune -a -f`（勿删正在跑的容器）；构建缓存往往是最大可回收项。
+
 ## 相关文档
 
 | 文档 | 用途 |
