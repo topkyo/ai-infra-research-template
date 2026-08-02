@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -47,11 +47,11 @@ jobs:
         run: npm run build
 
   # ----------------------------------------------------------------------
-  # Python sidecar: syntax + import check. We do NOT exercise akshare
-  # network calls in CI — they hit upstream and are flaky by design.
+  # Python sidecar: syntax + import check + unit tests. Tests are offline by
+  # design (no Tushare/akshare network calls — those are flaky upstream).
   # ----------------------------------------------------------------------
   pyserver:
-    name: pyserver (syntax + import)
+    name: pyserver (syntax + import + unit tests)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,3 +78,46 @@ jobs:
         env:
           TUSHARE_TOKEN: dummy-ci-token
         run: uv run python -c "import importlib.util as u; spec = u.spec_from_file_location('m','main.py'); m = u.module_from_spec(spec); spec.loader.exec_module(m); print('main loaded, app =', m.app)"
+
+      - name: Unit tests
+        env:
+          TUSHARE_TOKEN: dummy-ci-token
+        run: uv run python -m unittest discover -p "test_*.py"
+
+  # ----------------------------------------------------------------------
+  # End-to-end smoke: Playwright drives chromium against a local stack —
+  # pyserver in MOCK mode + Next.js dev server (LLM_PROVIDER=mock).
+  # ----------------------------------------------------------------------
+  e2e:
+    name: e2e (playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyserver/uv.lock
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Sync pyserver dependencies (locked)
+        working-directory: pyserver
+        run: uv sync --frozen
+
+      - name: Install chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e
+        working-directory: web
+        run: npm run test:e2e
