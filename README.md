@@ -14,14 +14,14 @@
 | AI 基建股票池 | 按产业环节维护 A 股主题标的，数据源为 [web/data/universe.json](web/data/universe.json)。 |
 | 行情与一致预期 | FastAPI sidecar 聚合现价、估值、成长、评级和隐含目标参考。 |
 | 组合持仓信号 | 结合真实或模拟持仓生成 5-20 个交易日目标仓位；失败时显式不可用，不合成伪结论。 |
-| 严格回测 | 按调仓周期重配，支持基准指数、单边费率、信号缓存和结果存档。 |
+| 严格回测 | 按调仓周期增量重配（避免重复买卖），支持基准指数、单边费率与滑点、涨跌停封板限制（T+1 结构性满足）、信号缓存和结果存档。 |
 | 静态快照 | 输出 `docs/data/*.json`，用于 Vercel（或 Pages）公开展示最近一次研究快照。 |
 
 ## 产品界面
 
 - `/`：股票池总览，展示主题、现价、一致预期参考、数据来源和刷新入口。
 - `/signals`：流式生成组合持仓信号，支持真实持仓和模拟资金模式，先展示加载进度，再展示目标仓位、调仓差额或失败原因。
-- `/backtest`：配置日期、调仓周期、最大持仓和基准指数，运行严格回测。
+- `/backtest`：配置日期、调仓周期、最大持仓、初始资金、费率、滑点、基准指数和涨跌停限制，运行严格回测。
 - `docs/`：无需服务端和 API key 的静态快照页面。
 
 ## 架构
@@ -49,6 +49,8 @@ scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 ```
 
 品牌文案集中在 [web/lib/site.ts](web/lib/site.ts)，视觉规范见 [DESIGN.md](DESIGN.md)。
+
+生产部署内置健康检查：docker-compose.yml 与两个 Dockerfile 均定义 healthcheck（pyserver 探 `/health`，web 探 `/`），web 依赖 pyserver 健康后启动。
 
 ## 数据与策略原则
 
@@ -120,6 +122,8 @@ npm run dev
 |---|---|
 | Web 单元测试 | `cd web && npm test` |
 | Web 类型检查 | `cd web && ./node_modules/.bin/tsc --noEmit` |
+| E2E 冒烟测试 | `cd web && npm run test:e2e`（自动起 mock pyserver + dev server） |
+| pyserver 单元测试 | `cd pyserver && uv run python -m unittest discover -p "test_*.py"` |
 | 生产构建 | `cd web && npm run build` |
 | 刷新股票池 | `cd web && npx tsx scripts/refresh-universe.ts` |
 | 生成静态快照 | `cd web && npx tsx scripts/snapshot.ts` |
