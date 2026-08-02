@@ -40,3 +40,7 @@ private/web-cache/
 scripts/agentstack
 scripts/agentstack-*
 # End AgentStack local development layer
+
+# Playwright e2e artifacts
+web/test-results/
+web/playwright-report/

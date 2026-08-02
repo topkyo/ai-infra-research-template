@@ -1,5 +1,5 @@
 {
-  "name": "silicon-civ-web",
+  "name": "topkyo-web",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -14,7 +14,8 @@
     "build": "rm -rf .next && next build && node scripts/fix-next-server-chunks.mjs",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test --import tsx test/*.test.ts"
+    "test": "node --test --import tsx test/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -24,6 +25,7 @@
     "recharts": "^2.13.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",
