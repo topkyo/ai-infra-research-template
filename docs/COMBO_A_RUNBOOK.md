@@ -113,7 +113,9 @@ ssh -L 3000:127.0.0.1:3000 goyun
 | tunnel | `~/scripts/tunnel-watch.sh` | */5 | Tunnel URL 同步 + 外网 `/health` |
 | dashboard | [`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh) | 每小时（如 `7 * * * *`，按主机时区） | 研究台 Compose + 3000/8001 + 磁盘紧急兜底 |
 
-- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；**仅在至少一路 TG/Slack 发送成功后**写入冷却戳；dashboard 侧 `COOLDOWN_SEC` 默认 3600 秒）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）；healthcheck 会把 alert.sh 的输出一并捕获进 `.monitor/logs/vps-health-*.log`。
+- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；**仅在至少一路 TG/Slack 发送成功后**写入冷却戳；dashboard 侧 `COOLDOWN_SEC` 默认 3600 秒）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）；healthcheck 会把 alert.sh 的输出一并捕获进 `.monitor/logs/vps-health-*.log`。以上 VPS 脚本已 vendor 到 [`deploy/vps-scripts/`](../deploy/vps-scripts/)（alert.sh 含 flock 冷却串行化补丁；密钥仅存 VPS 点文件），线上副本在 `~/scripts/` 与 EA 共用，改动以仓库为准两边同步。
+- 已知限制：任一通道发送成功即写冷却戳，另一通道故障在冷却期内不重试（失败仍记 `health-alerts.log`）；全通道故障暂无 dead-man's-switch，仅有日志留痕。
+- 监控边界：本表脚本只覆盖基础设施可观测性；告警沉默不代表业务接口（LLM 信号/回测/股票池）成功，业务失败语义由应用内 strict 规则保证。
 - dashboard 的 `ALERT_KEY`：`dashboard-compose` / `dashboard-docker` / `dashboard-http` / `disk-crit`。
 - `alert.sh` 缺失或不可执行时，healthcheck 会把 WARN 经 fd 3 写到 cron stderr 并记日志，但**无法告警**；上机与巡检前置自检：`sudo -u <cron用户> test -x ~/scripts/alert.sh && echo alert-ok`。
 - 磁盘常规 paging **仅** `platform-watch`（`ALERT_KEY=disk`，阈值 `DISK_WARN_PCT` 默认 85），它是磁盘告警的强制依赖；healthcheck 低于 `DISK_CRIT_PCT`（默认 95）只记日志，达到阈值才兜底告警（`ALERT_KEY=disk-crit`，键不同，不与 platform-watch 双推）。

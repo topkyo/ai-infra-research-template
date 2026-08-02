@@ -1,0 +1,6 @@
+# Platform / proxy / EA / tunnel / dashboard
+*/5 * * * * /home/tim/scripts/platform-watch.sh
+*/5 * * * * /home/tim/scripts/proxy-watch.sh
+*/5 * * * * /home/tim/scripts/ea-watch.sh
+*/5 * * * * /home/tim/scripts/tunnel-watch.sh
+7 * * * * /home/tim/github/ai-infra-dashboard/scripts/vps-healthcheck.sh

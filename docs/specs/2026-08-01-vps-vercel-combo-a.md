@@ -30,3 +30,4 @@
 
 - 仓库内配置与文档自洽；`docker compose config` 通过。
 - 操作者按 runbook 可在 VPS 拉起私有台，并在 Vercel 发布公开快照（需自备 token/域名）。
+- 监控契约自洽（2026-08-02 补充）：故障域拆分（platform/proxy/ea/tunnel/dashboard）、`ALERT_KEY` 全集、冷却"发送成功后才写戳"、dashboard 磁盘仅 `disk-crit` 兜底，均在 runbook §H 与 `deploy/vps-scripts/` 中文档化且与线上脚本一致。
