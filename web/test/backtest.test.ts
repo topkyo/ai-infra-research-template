@@ -304,3 +304,99 @@ test("held position that turns untradable on rebalance day is kept and marked at
   assert.equal(bar.positions.B.price, 98.5);
   assert.ok(r.warnings?.some((w) => w.includes("B")));
 });
+
+// Flat 100 for five days, then a ±10% seal on 2025-01-08 (a rebalance day).
+const LIMIT_UP_CLOSES = [100, 100, 100, 100, 100, 110, 110, 110, 110, 110, 110, 110, 110, 110, 110];
+const LIMIT_DOWN_CLOSES = [100, 100, 100, 100, 100, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90];
+
+test("limit-up seal blocks buys on the sealed day with a warning", async () => {
+  const series: SymbolSeries[] = [
+    { entry: { symbol: "600001", name: "Main", theme: "T" }, klines: makeKlines("2025-01-01", LIMIT_UP_CLOSES) },
+  ];
+  const buyFromJan8: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: opts.asOf < "2025-01-08" ? "hold" : "buy",
+      confidence: 1,
+      size: opts.asOf < "2025-01-08" ? 0 : 1,
+      rationale: "test",
+    }));
+  const r = await runBacktest(
+    series,
+    { ...cfg, rebalanceEveryNDays: 5, feeBps: 0, slippageBps: 0 },
+    { scorer: buyFromJan8 },
+  );
+  // +10% on 2025-01-08 seals the board (主板 10%): no fill that day...
+  assert.ok(!r.trades.some((t) => t.date === "2025-01-08" && t.side === "buy"));
+  assert.ok(r.warnings?.some((w) => w.includes("涨停")));
+  // ...but the next rebalance day trades normally.
+  assert.ok(r.trades.some((t) => t.date === "2025-01-15" && t.side === "buy"));
+});
+
+test("respectPriceLimits=false allows trading on sealed days", async () => {
+  const series: SymbolSeries[] = [
+    { entry: { symbol: "600001", name: "Main", theme: "T" }, klines: makeKlines("2025-01-01", LIMIT_UP_CLOSES) },
+  ];
+  const buyFromJan8: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: opts.asOf < "2025-01-08" ? "hold" : "buy",
+      confidence: 1,
+      size: opts.asOf < "2025-01-08" ? 0 : 1,
+      rationale: "test",
+    }));
+  const r = await runBacktest(
+    series,
+    { ...cfg, rebalanceEveryNDays: 5, feeBps: 0, slippageBps: 0, respectPriceLimits: false },
+    { scorer: buyFromJan8 },
+  );
+  assert.ok(r.trades.some((t) => t.date === "2025-01-08" && t.side === "buy"));
+});
+
+test("limit-down seal blocks sells on the sealed day with a warning", async () => {
+  const series: SymbolSeries[] = [
+    { entry: { symbol: "600001", name: "Main", theme: "T" }, klines: makeKlines("2025-01-01", LIMIT_DOWN_CLOSES) },
+    { entry: { symbol: "600002", name: "Other", theme: "T" }, klines: makeKlines("2025-01-01", Array.from({ length: 15 }, () => 50)) },
+  ];
+  const rotate: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: s.symbol === (opts.asOf < "2025-01-08" ? "600001" : "600002") ? "buy" : "hold",
+      confidence: 1,
+      size: s.symbol === (opts.asOf < "2025-01-08" ? "600001" : "600002") ? 1 : 0,
+      rationale: "rotate",
+    }));
+  const r = await runBacktest(
+    series,
+    { ...cfg, rebalanceEveryNDays: 5, feeBps: 0, slippageBps: 0 },
+    { scorer: rotate },
+  );
+  // -10% on 2025-01-08: the exit is blocked, position kept and marked at 90.
+  assert.ok(!r.trades.some((t) => t.date === "2025-01-08" && t.symbol === "600001" && t.side === "sell"));
+  assert.ok(r.warnings?.some((w) => w.includes("跌停")));
+  const bar = r.equityCurve.find((b) => b.date === "2025-01-08")!;
+  assert.equal(bar.positions["600001"].price, 90);
+  // Next rebalance day the seal is gone, so the exit executes.
+  assert.ok(r.trades.some((t) => t.date === "2025-01-15" && t.symbol === "600001" && t.side === "sell"));
+});
+
+test("T+1: no symbol is bought and sold on the same day", async () => {
+  const rotatingScorer: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: s.symbol === (opts.asOf < "2025-01-08" ? "A" : "B") ? "buy" : "hold",
+      confidence: 1,
+      size: s.symbol === (opts.asOf < "2025-01-08" ? "A" : "B") ? 1 : 0,
+      rationale: "rotate",
+    }));
+  // rebalanceEveryNDays=2 maximizes same-day sell+buy opportunities.
+  const r = await runBacktest(makeSeries(), { ...cfg, rebalanceEveryNDays: 2 }, { scorer: rotatingScorer });
+  const sides = new Map<string, Set<string>>();
+  for (const t of r.trades) {
+    const key = `${t.date}:${t.symbol}`;
+    sides.set(key, (sides.get(key) ?? new Set()).add(t.side));
+  }
+  for (const [key, s] of sides) {
+    assert.ok(!(s.has("buy") && s.has("sell")), `same-day round trip on ${key}`);
+  }
+});

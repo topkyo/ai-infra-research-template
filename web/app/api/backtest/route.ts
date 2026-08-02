@@ -30,13 +30,17 @@ export async function POST(req: NextRequest) {
   const bodySlippageValid = body.slippageBps != null
     && Number.isFinite(bodySlippage) && bodySlippage >= 0 && bodySlippage <= 100;
   const slippageBps = bodySlippageValid ? bodySlippage : envSlippageValid ? envSlippage : 0;
+  const startCash = Number(body.startCash);
+  const feeBps = Number(body.feeBps);
+  const envRespectLimits = process.env.BACKTEST_RESPECT_PRICE_LIMITS;
   const cfg: BacktestConfig = {
-    startCash: body.startCash ?? 1_000_000,
+    startCash: Number.isFinite(startCash) && startCash > 0 ? startCash : 1_000_000,
     rebalanceEveryNDays: body.rebalanceEveryNDays ?? 10,
     startDate: body.startDate,
     endDate: body.endDate,
-    feeBps: body.feeBps ?? 10,
+    feeBps: Number.isFinite(feeBps) && feeBps >= 0 && feeBps <= 200 ? feeBps : 10,
     slippageBps,
+    respectPriceLimits: body.respectPriceLimits ?? (envRespectLimits == null ? true : envRespectLimits !== "0"),
     maxPositions: body.maxPositions ?? 6,
   };
 

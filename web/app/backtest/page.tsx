@@ -41,7 +41,10 @@ export default function BacktestPage() {
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [rebalance, setRebalance] = useState(10);
   const [maxPositions, setMaxPositions] = useState(6);
+  const [startCash, setStartCash] = useState(1_000_000);
+  const [feeBps, setFeeBps] = useState(10);
   const [slippageBps, setSlippageBps] = useState(5);
+  const [respectLimits, setRespectLimits] = useState(true);
   const [benchmarkIndex, setBenchmarkIndex] = useState("csi300");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +83,10 @@ export default function BacktestPage() {
           rebalanceEveryNDays: rebalance,
           maxPositions,
           benchmarkIndex,
-          startCash: 1_000_000,
-          feeBps: 10,
+          startCash,
+          feeBps,
           slippageBps,
+          respectPriceLimits: respectLimits,
         }),
       });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
@@ -129,7 +133,7 @@ export default function BacktestPage() {
         <div>
           <div className="eyebrow">{SITE_EYEBROW}</div>
           <h1>策略回测</h1>
-          <p>按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，与基准指数对比。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。</p>
+          <p>按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，涨停不可买、跌停不可卖（可关闭），与基准指数对比。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。</p>
         </div>
       </header>
 
@@ -153,6 +157,16 @@ export default function BacktestPage() {
             onChange={(e) => setMaxPositions(+e.target.value)} />
         </label>
         <label className="field">
+          <span>初始资金</span>
+          <input type="number" min={10000} step={10000} value={startCash}
+            onChange={(e) => setStartCash(+e.target.value)} />
+        </label>
+        <label className="field">
+          <span>费率(bps)</span>
+          <input type="number" min={0} max={200} value={feeBps}
+            onChange={(e) => setFeeBps(+e.target.value)} />
+        </label>
+        <label className="field">
           <span>滑点(bps)</span>
           <input type="number" min={0} max={100} value={slippageBps}
             onChange={(e) => setSlippageBps(+e.target.value)} />
@@ -165,40 +179,33 @@ export default function BacktestPage() {
             <option value="csi500">中证500</option>
           </select>
         </label>
+        <label className="check">
+          <input type="checkbox" checked={respectLimits}
+            onChange={(e) => setRespectLimits(e.target.checked)} />
+          <span>涨跌停限制</span>
+        </label>
         <button onClick={run} disabled={loading}>
           {loading ? "运行中…" : "运行回测"}
         </button>
       </div>
 
       {(loading || progress) && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+        <div className="card spaced-top">
+          <div className="fetch-progress-meta progress-title">
             <span>
               {progress ? PHASE_LABEL[progress.phase] : "准备中…"}
               {progress && `  ${progress.done} / ${progress.total}`}
             </span>
-            <span style={{ color: "var(--muted)" }}>{(pct * 100).toFixed(0)}%</span>
+            <span>{(pct * 100).toFixed(0)}%</span>
           </div>
-          <div style={{
-            height: 8,
-            marginTop: 8,
-            background: "var(--field)",
-            borderRadius: 4,
-            overflow: "hidden",
-            border: "1px solid var(--border)",
-          }}>
-            <div style={{
-              height: "100%",
-              width: `${pct * 100}%`,
-              background: "var(--accent)",
-              transition: "width 0.2s ease",
-            }} />
+          <div className="fetch-progress-track">
+            <div className="fetch-progress-bar" style={{ width: `${pct * 100}%` }} />
           </div>
           {logs.length > 0 && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
-              <div style={{ color: "var(--text)" }}>· {logs[logs.length - 1]}</div>
+            <div className="progress-logs">
+              <div className="progress-logs-latest">· {logs[logs.length - 1]}</div>
               {logs.length > 1 && (
-                <details style={{ marginTop: 6 }}>
+                <details className="progress-logs-more">
                   <summary>更早日志（{logs.length - 1} 条）</summary>
                   {logs.slice(0, -1).map((l, i) => <div key={i}>· {l}</div>)}
                 </details>
@@ -209,16 +216,16 @@ export default function BacktestPage() {
       )}
 
       {error && (
-        <div className="card" style={{ marginTop: 16, borderColor: "var(--danger)" }}>
+        <div className="card spaced-top card-danger">
           <strong>失败：</strong> {error}
         </div>
       )}
 
       {result && result.warnings && result.warnings.length > 0 && (
-        <div className="card" style={{ marginTop: 16, borderColor: "var(--warn)" }}>
+        <div className="card spaced-top card-warn">
           <strong>数据警告（{result.warnings.length}）：</strong>
           调仓日存在缺行情（停牌/缺数据）标的，已跳过其交易并按最近收盘价估值。
-          <details style={{ marginTop: 6 }}>
+          <details className="progress-logs-more">
             <summary>查看明细</summary>
             {result.warnings.slice(0, 20).map((w, i) => <div key={i}>· {w}</div>)}
           </details>
@@ -227,7 +234,7 @@ export default function BacktestPage() {
 
       {result && (
         <>
-          <div className="row" style={{ marginTop: 16 }}>
+          <div className="row spaced-top">
             <Kpi label="总收益" value={`${result.stats.totalReturnPct.toFixed(2)}%`} pos={result.stats.totalReturnPct >= 0} />
             <Kpi label="年化" value={`${result.stats.cagrPct.toFixed(2)}%`} pos={result.stats.cagrPct >= 0} />
             <Kpi label="最大回撤" value={`${result.stats.maxDrawdownPct.toFixed(2)}%`} pos={false} />

@@ -115,6 +115,7 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 | `BACKTEST_LOAD_CONCURRENCY` | `6` | 回测加载 K 线/基本面的并发数。 |
 | `BACKTEST_PYSERVER_TIMEOUT_MS` | `20000` | 回测单只 K 线请求超时。 |
 | `BACKTEST_SLIPPAGE_BPS` | `0` | 回测单边滑点（bps），请求体 `slippageBps` 优先；页面默认填 5。 |
+| `BACKTEST_RESPECT_PRICE_LIMITS` | `1` | 回测涨跌停限制（涨停不可买/跌停不可卖，按板块 10%/20%/30%），`0` 关闭；请求体 `respectPriceLimits` 优先。 |
 | `LLM_SCORE_BATCH_SIZE` | `10` | `scoreSymbols` 其他调用方默认批大小。 |
 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` | `900000` | 股票池刷新提议阶段 LLM 超时。 |
 | `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新新增标的 pyserver 校验超时。 |

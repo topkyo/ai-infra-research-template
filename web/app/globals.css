@@ -141,6 +141,14 @@ input:focus, select:focus, textarea:focus { outline: 2px solid rgba(37, 99, 235,
 .fetch-progress-meta, .fetch-progress-detail { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
 .fetch-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: var(--subtle); border: 1px solid var(--border); }
 .fetch-progress-bar { height: 100%; min-width: 2px; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
+/* Standalone progress card (backtest run) reusing the fetch-progress parts. */
+.spaced-top { margin-top: 16px; }
+.card-danger { border-color: var(--danger); }
+.card-warn { border-color: var(--warn); }
+.progress-title { color: var(--fg); font-size: 13px; margin-bottom: 8px; }
+.progress-logs { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.progress-logs-latest { color: var(--fg); }
+.progress-logs-more { margin-top: 6px; }
 .theme-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
 .theme-panel { border-radius: 10px; overflow: hidden; min-width: 0; }
 .theme-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 12px 14px; background: var(--card-2); border-bottom: 1px solid var(--border); }

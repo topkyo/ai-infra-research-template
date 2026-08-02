@@ -15,6 +15,9 @@ export interface BacktestConfig {
   endDate: string;
   feeBps: number;            // one-way trading fee in basis points
   slippageBps?: number;      // one-way slippage in basis points (default 0)
+  /** Respect daily price-limit seals (default true): no buys at limit-up,
+   *  no sells at limit-down. HK has no daily limits. */
+  respectPriceLimits?: boolean;
   maxPositions: number;
 }
 
@@ -82,6 +85,17 @@ function indexByDate(klines: Kline[]) {
   const m = new Map<string, Kline>();
   for (const k of klines) m.set(k.date, k);
   return m;
+}
+
+/** Board-based daily price-limit fraction; 0 means no daily limit (HK).
+ *  ST ±5% is not modeled — the data carries no ST flag. */
+function priceLimitFraction(symbol: string): number {
+  const s = symbol.toLowerCase();
+  if (s.includes("hk")) return 0;
+  const digits = s.replace(/\D/g, "");
+  if (/^(68|30)/.test(digits)) return 0.2;   // 科创板 / 创业板
+  if (/^(8|4|920)/.test(digits)) return 0.3; // 北交所
+  return 0.1;                                 // 主板
 }
 
 export type Progress =
@@ -245,6 +259,7 @@ export async function runBacktest(
   const warnings: string[] = [];
   const fee = cfg.feeBps / 10_000;
   const slip = (cfg.slippageBps ?? 0) / 10_000;
+  const respectLimits = cfg.respectPriceLimits !== false;
   const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
 
   const noteWarning = (message: string) => {
@@ -268,11 +283,23 @@ export async function runBacktest(
     // known close forward. Only symbols with a real bar today are tradable.
     const prices: Record<string, number> = {};
     const tradable: Record<string, boolean> = {};
+    const limitState: Record<string, "up" | "down" | null> = {};
     for (let j = 0; j < symbols.length; j++) {
       const k = byDate[j].get(date);
+      const prevClose = lastClose[j];
       if (k) {
         lastClose[j] = k.close;
         tradable[symbols[j]] = true;
+        if (respectLimits && prevClose !== undefined && prevClose > 0) {
+          const limit = priceLimitFraction(symbols[j]);
+          if (limit > 0) {
+            const pct = k.close / prevClose - 1;
+            // 0.2% tolerance: limit prices round to 0.01 CNY and qfq
+            // adjustment adds noise, so a sealed board prints slightly off.
+            if (pct >= limit - 0.002) limitState[symbols[j]] = "up";
+            else if (pct <= -(limit - 0.002)) limitState[symbols[j]] = "down";
+          }
+        }
       }
       const px = lastClose[j];
       if (px !== undefined) prices[symbols[j]] = px;
@@ -317,6 +344,8 @@ export async function runBacktest(
       };
 
       // Sells first (full exits, then overweight trims) so cash is available.
+      // T+1 is structural here: each symbol trades at most once per day in one
+      // direction, and daily bars mean sold shares were settled on prior days.
       for (const sym of symbols) {
         const held = shares[sym] ?? 0;
         if (held <= 0) continue;
@@ -327,6 +356,10 @@ export async function runBacktest(
         if (excessValue <= 0) continue;
         if (!tradable[sym]) {
           skipUntradable(sym);
+          continue;
+        }
+        if (limitState[sym] === "down") {
+          noteWarning(`${date} 调仓日 ${sym} 跌停封板，无法卖出`);
           continue;
         }
         const exec = round4(px * (1 - slip));
@@ -349,6 +382,10 @@ export async function runBacktest(
         if (deficit <= 0) continue;
         if (!tradable[sym]) {
           skipUntradable(sym);
+          continue;
+        }
+        if (limitState[sym] === "up") {
+          noteWarning(`${date} 调仓日 ${sym} 涨停封板，无法买入`);
           continue;
         }
         const exec = round4(px * (1 + slip));
