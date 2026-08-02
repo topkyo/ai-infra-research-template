@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { readNdjsonStream } from "@/lib/ndjson";
 
 interface RefreshResult {
   proposal: { rationale: string };
@@ -30,33 +31,27 @@ export default function RefreshUniverseButton() {
     try {
       const r = await fetch("/api/universe/refresh", { method: "POST" });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
-      const reader = r.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
       let changed = false;
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, nl);
-          buf = buf.slice(nl + 1);
-          if (!line) continue;
-          const evt = JSON.parse(line);
-          if (evt.type === "log") setLogs((p) => [...p, evt.message]);
-          else if (evt.type === "progress") setProgress({ done: evt.done, total: evt.total });
-          else if (evt.type === "result") {
-            setResult(evt.result);
-            changed = (
-              evt.result.applied.added.length > 0
-              || evt.result.applied.removed.length > 0
-              || evt.result.applied.reclassified.length > 0
-            );
-          }
-          else if (evt.type === "error") setError(evt.message);
+      type Evt =
+        | { type: "log"; message: string }
+        | { type: "progress"; done: number; total: number }
+        | { type: "result"; result: RefreshResult }
+        | { type: "error"; message: string };
+      await readNdjsonStream<Evt>(r.body, (evt) => {
+        if (evt.type === "log") setLogs((p) => [...p, evt.message]);
+        else if (evt.type === "progress") setProgress({ done: evt.done, total: evt.total });
+        else if (evt.type === "result") {
+          setResult(evt.result);
+          changed = (
+            evt.result.applied.added.length > 0
+            || evt.result.applied.removed.length > 0
+            || evt.result.applied.reclassified.length > 0
+          );
         }
-      }
+        else if (evt.type === "error") setError(evt.message);
+      }, (line) => {
+        setLogs((p) => [...p, `跳过无法解析的响应行（${line.length} 字符）`]);
+      });
       if (changed) router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

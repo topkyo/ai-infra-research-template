@@ -46,6 +46,23 @@ const getStmt = db.prepare(
 const putStmt = db.prepare(
   "INSERT OR REPLACE INTO cache (key, payload, fetched_at, ttl_seconds) VALUES (?, ?, ?, ?)",
 );
+const delStmt = db.prepare("DELETE FROM cache WHERE key = ?");
+const pruneExpiredStmt = db.prepare(
+  "DELETE FROM cache WHERE ttl_seconds > 0 AND (? - fetched_at) > ttl_seconds",
+);
+const countStmt = db.prepare("SELECT COUNT(*) AS n FROM cache");
+const evictOldestStmt = db.prepare(
+  "DELETE FROM cache WHERE key IN (SELECT key FROM cache ORDER BY fetched_at ASC, rowid ASC LIMIT ?)",
+);
+
+function envPositiveInt(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+const CACHE_MAX_ROWS = envPositiveInt("WEB_CACHE_MAX_ROWS", 5000);
+const PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+let lastPruneAt = 0;
 
 const saveBacktestStmt = db.prepare(`
   INSERT INTO backtest_results (
@@ -102,13 +119,32 @@ export function cacheGet<T>(key: string): T | null {
     | undefined;
   if (!row) return null;
   if (row.ttl_seconds > 0 && Date.now() / 1000 - row.fetched_at > row.ttl_seconds) {
+    // Delete expired rows eagerly so the cache does not accumulate stale entries.
+    delStmt.run(key);
     return null;
   }
   return JSON.parse(row.payload) as T;
 }
 
+/** Delete expired rows, then evict oldest rows beyond `maxRows`. */
+export function pruneCache(maxRows = CACHE_MAX_ROWS): { expired: number; evicted: number } {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expired = pruneExpiredStmt.run(nowSec).changes;
+  const total = (countStmt.get() as { n: number }).n;
+  let evicted = 0;
+  if (total > maxRows) {
+    evicted = evictOldestStmt.run(total - maxRows).changes;
+  }
+  return { expired, evicted };
+}
+
 export function cachePut<T>(key: string, value: T, ttlSeconds: number): void {
   putStmt.run(key, JSON.stringify(value), Math.floor(Date.now() / 1000), ttlSeconds);
+  const now = Date.now();
+  if (now - lastPruneAt > PRUNE_INTERVAL_MS) {
+    lastPruneAt = now;
+    pruneCache();
+  }
 }
 
 export async function cached<T>(

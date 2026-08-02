@@ -16,6 +16,7 @@ let hashKey: typeof import("../lib/cache").hashKey;
 let getBacktestResult: typeof import("../lib/cache").getBacktestResult;
 let listBacktestResults: typeof import("../lib/cache").listBacktestResults;
 let saveBacktestResult: typeof import("../lib/cache").saveBacktestResult;
+let pruneCache: typeof import("../lib/cache").pruneCache;
 
 before(async () => {
   const mod = await import("../lib/cache");
@@ -27,6 +28,7 @@ before(async () => {
   getBacktestResult = mod.getBacktestResult;
   listBacktestResults = mod.listBacktestResults;
   saveBacktestResult = mod.saveBacktestResult;
+  pruneCache = mod.pruneCache;
 });
 
 test("hashKey is deterministic and order-sensitive on objects", () => {
@@ -56,6 +58,40 @@ test("cache expires after ttl", async () => {
   db.prepare("UPDATE cache SET fetched_at = fetched_at - 2 WHERE key = ?").run("k-expire");
   db.close();
   assert.equal(cacheGet("k-expire"), null);
+});
+
+test("cacheGet deletes expired rows instead of leaving them", async () => {
+  cachePut("k-stale", "x", 1);
+  const Database = (await import("better-sqlite3")).default;
+  const db = new Database(path.join(tmp, ".cache", "web.db"));
+  db.prepare("UPDATE cache SET fetched_at = fetched_at - 10 WHERE key = ?").run("k-stale");
+  db.close();
+  assert.equal(cacheGet("k-stale"), null);
+  const db2 = new Database(path.join(tmp, ".cache", "web.db"));
+  const row = db2.prepare("SELECT COUNT(*) AS n FROM cache WHERE key = ?").get("k-stale") as { n: number };
+  db2.close();
+  assert.equal(row.n, 0);
+});
+
+test("pruneCache removes expired rows and evicts oldest beyond maxRows", async () => {
+  // Isolate from rows left by earlier tests so counts are deterministic.
+  const Database = (await import("better-sqlite3")).default;
+  const db = new Database(path.join(tmp, ".cache", "web.db"));
+  db.prepare("DELETE FROM cache").run();
+  db.close();
+  cachePut("p-old", 1, 1000);
+  cachePut("p-new", 2, 1000);
+  cachePut("p-gone", 3, 1);
+  const db2 = new Database(path.join(tmp, ".cache", "web.db"));
+  db2.prepare("UPDATE cache SET fetched_at = fetched_at - 100 WHERE key = ?").run("p-gone");
+  db2.prepare("UPDATE cache SET fetched_at = fetched_at - 50 WHERE key = ?").run("p-old");
+  db2.close();
+  const stats = pruneCache(1);
+  assert.equal(stats.expired, 1);
+  assert.equal(stats.evicted, 1);
+  assert.equal(cacheGet("p-gone"), null);
+  assert.equal(cacheGet("p-old"), null); // evicted: oldest fetched_at
+  assert.deepEqual(cacheGet("p-new"), 2); // survives
 });
 
 test("cached() calls fetcher only on miss", async () => {

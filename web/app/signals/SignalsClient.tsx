@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SITE_EYEBROW } from "@/lib/site";
+import { readNdjsonStream } from "@/lib/ndjson";
 import { parseHoldingsText } from "@/lib/holdingsImport";
 import {
   buildResearchCandidates,
@@ -179,6 +180,7 @@ export default function SignalsClient() {
   const [setupErrors, setSetupErrors] = useState<string[]>([]);
   const [savingHoldings, setSavingHoldings] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [notices, setNotices] = useState<string[]>([]);
   const started = useRef(false);
 
   function resetOutput() {
@@ -187,6 +189,7 @@ export default function SignalsClient() {
     setPortfolio(null);
     setProgress(null);
     setSetupRequired(null);
+    setNotices([]);
   }
 
   function selectMode(nextMode: PortfolioMode) {
@@ -251,43 +254,33 @@ export default function SignalsClient() {
         }),
       });
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, nl);
-          buf = buf.slice(nl + 1);
-          if (!line) continue;
-          const evt = JSON.parse(line) as
-            | { type: "progress"; phase: Phase; done: number; total: number }
-            | { type: "result"; portfolio: PortfolioContext; rows: SignalRow[] }
-            | { type: "setup_required"; code: "holdings_missing" | "holdings_invalid"; message: string; filePath: string }
-            | { type: "error"; message: string };
-          if (evt.type === "progress") {
-            setProgress({ phase: evt.phase, done: evt.done, total: evt.total });
-          } else if (evt.type === "result") {
-            setRows(evt.rows);
-            setPortfolio(evt.portfolio);
-          } else if (evt.type === "setup_required") {
-            setRows([]);
-            setPortfolio(null);
-            setSetupRequired({
-              code: evt.code,
-              message: evt.message,
-              filePath: evt.filePath,
-            });
-          } else {
-            setRows([]);
-            setPortfolio(null);
-            setError(evt.message);
-          }
+      type Evt =
+        | { type: "progress"; phase: Phase; done: number; total: number }
+        | { type: "result"; portfolio: PortfolioContext; rows: SignalRow[] }
+        | { type: "setup_required"; code: "holdings_missing" | "holdings_invalid"; message: string; filePath: string }
+        | { type: "error"; message: string };
+      await readNdjsonStream<Evt>(response.body, (evt) => {
+        if (evt.type === "progress") {
+          setProgress({ phase: evt.phase, done: evt.done, total: evt.total });
+        } else if (evt.type === "result") {
+          setRows(evt.rows);
+          setPortfolio(evt.portfolio);
+        } else if (evt.type === "setup_required") {
+          setRows([]);
+          setPortfolio(null);
+          setSetupRequired({
+            code: evt.code,
+            message: evt.message,
+            filePath: evt.filePath,
+          });
+        } else {
+          setRows([]);
+          setPortfolio(null);
+          setError(evt.message);
         }
-      }
+      }, (line) => {
+        setNotices((prev) => [...prev, `跳过无法解析的响应行（${line.length} 字符）`]);
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -413,6 +406,12 @@ export default function SignalsClient() {
       {error && (
         <div className="card" style={{ borderColor: "var(--danger)", marginBottom: 14 }}>
           <strong>信号不可用：</strong> {error}
+        </div>
+      )}
+
+      {notices.length > 0 && (
+        <div className="card" style={{ borderColor: "var(--warn)", marginBottom: 14, fontSize: 12 }}>
+          {notices.map((n, i) => <div key={i}>· {n}</div>)}
         </div>
       )}
 

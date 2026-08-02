@@ -112,8 +112,9 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 | `BACKTEST_SIGNAL_CONCURRENCY` | `8` | 并行处理的调仓日数量。 |
 | `BACKTEST_LLM_TIMEOUT_MS` | `300000` | 回测单批 LLM 超时。 |
 | `BACKTEST_LLM_MAX_ATTEMPTS` | `2` | 回测单批技术重试次数。 |
-| `BACKTEST_LOAD_CONCURRENCY` | `10` | 回测加载 K 线/基本面的并发数。 |
-| `BACKTEST_PYSERVER_TIMEOUT_MS` | `60000` | 回测单只 K 线请求超时。 |
+| `BACKTEST_LOAD_CONCURRENCY` | `6` | 回测加载 K 线/基本面的并发数。 |
+| `BACKTEST_PYSERVER_TIMEOUT_MS` | `20000` | 回测单只 K 线请求超时。 |
+| `BACKTEST_SLIPPAGE_BPS` | `0` | 回测单边滑点（bps），请求体 `slippageBps` 优先；页面默认填 5。 |
 | `LLM_SCORE_BATCH_SIZE` | `10` | `scoreSymbols` 其他调用方默认批大小。 |
 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` | `900000` | 股票池刷新提议阶段 LLM 超时。 |
 | `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新新增标的 pyserver 校验超时。 |
@@ -129,6 +130,8 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 | Python 市场数据缓存 | `pyserver/cache.db` 或 `PYSERVER_CACHE_DB` | K 线、基本面、分析师、spot | 分层 TTL |
 | LLM 回包缓存 | `web/.cache/web.db` | prompt + model 哈希 | 约 12 小时 |
 | 回测结果存档 | `web/.cache/web.db` | 历史回测结果 | 长期保留 |
+
+缓存维护（两端一致）：读取时立即删除过期行；写入按时间间隔节流触发清理，先删过期行，再按最旧 `fetched_at` 淘汰超量行。上限分别由 `WEB_CACHE_MAX_ROWS`（默认 5000）与 `PYSERVER_CACHE_MAX_ROWS`（默认 20000）控制。pyserver 的 SQLite 使用 WAL + busy_timeout，并发读写不会再出现 `database is locked`；日志级别由 `PYSERVER_LOG_LEVEL`（默认 `INFO`）控制，上游异常详情只进服务端日志，不再随 502 回传。
 
 清理 macOS 本地行情缓存：
 
