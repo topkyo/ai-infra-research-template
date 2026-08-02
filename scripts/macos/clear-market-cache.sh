@@ -33,5 +33,5 @@ fi
 
 echo ""
 echo "Browser: DevTools → Application → Local Storage → delete keys:"
-echo "  silicon-civ:spot:v1"
-echo "  silicon-civ:analyst:v1"
+echo "  topkyo:spot:v4"
+echo "  topkyo:analyst:v4"

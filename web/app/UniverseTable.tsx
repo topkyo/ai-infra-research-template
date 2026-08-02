@@ -33,8 +33,9 @@ const SPOT_BATCH_SIZE = 12;
 const EMPTY_SPOTS: Spot[] = [];
 export const SPOT_BROWSER_CACHE_TTL_MS = 15 * 60 * 1000;
 export const ANALYST_BROWSER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const SPOT_CACHE_KEY = "silicon-civ:spot:v4";
-const ANALYST_CACHE_KEY = "silicon-civ:analyst:v4";
+const SPOT_CACHE_KEY = "topkyo:spot:v4";
+const ANALYST_CACHE_KEY = "topkyo:analyst:v4";
+const LEGACY_CACHE_KEY_PREFIXES = ["silicon-civ:spot:", "silicon-civ:analyst:"];
 
 interface CacheEntry<T> {
   value: T;
@@ -68,10 +69,36 @@ function writeCache<T>(key: string, cache: CacheMap<T>): void {
   }
 }
 
-function readFreshCacheValues<T>(key: string, symbols: string[], ttlMs: number): T[] {
+/** Remove pre-rebrand localStorage keys once; they would linger forever otherwise. */
+function dropLegacyCacheKeys(): void {
+  if (!canUseStorage()) return;
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && LEGACY_CACHE_KEY_PREFIXES.some((p) => key.startsWith(p))) {
+        doomed.push(key);
+      }
+    }
+    doomed.forEach((k) => window.localStorage.removeItem(k));
+  } catch {
+    // Storage can be disabled; fetching should still work.
+  }
+}
+
+export function readFreshCacheValues<T>(key: string, symbols: string[], ttlMs: number): T[] {
   const now = Date.now();
   const cache = readCache<T>(key);
+  const wanted = new Set(symbols);
   let changed = false;
+  // Drop entries for symbols that left the universe (e.g. after a refresh),
+  // so removed names do not linger in localStorage.
+  for (const cachedSymbol of Object.keys(cache)) {
+    if (!wanted.has(cachedSymbol)) {
+      delete cache[cachedSymbol];
+      changed = true;
+    }
+  }
   const values: T[] = [];
   for (const symbol of symbols) {
     const hit = cache[symbol];
@@ -211,6 +238,7 @@ export default function UniverseTable({
       return;
     }
 
+    dropLegacyCacheKeys();
     const cachedSpots = readFreshCacheValues<Spot>(SPOT_CACHE_KEY, symbols, SPOT_BROWSER_CACHE_TTL_MS);
     const cachedAnalysts = readFreshCacheValues<Analyst>(ANALYST_CACHE_KEY, symbols, ANALYST_BROWSER_CACHE_TTL_MS);
     const cachedSpotSymbols = new Set(cachedSpots.map((s) => s.symbol));
