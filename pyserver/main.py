@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -36,6 +37,12 @@ from pydantic import BaseModel
 # ---------- bootstrap ------------------------------------------------------
 
 load_dotenv(Path(__file__).parent / ".env")
+
+logging.basicConfig(
+    level=os.environ.get("PYSERVER_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger("pyserver")
 
 
 MARKET_HTTP_PROXY = os.environ.get("MARKET_HTTP_PROXY", "").strip()
@@ -140,13 +147,23 @@ CREATE TABLE IF NOT EXISTS cache (
 
 @contextmanager
 def db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(SCHEMA)
+    # WAL lets readers proceed alongside the single writer, and busy_timeout
+    # makes concurrent writers wait instead of failing with "database is locked".
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(SCHEMA)
         yield conn
         conn.commit()
     finally:
         conn.close()
+
+
+CACHE_MAX_ROWS = int(os.environ.get("PYSERVER_CACHE_MAX_ROWS", "20000"))
+_PRUNE_INTERVAL_S = 600
+_last_prune_at = 0.0
 
 
 def cache_get(key: str) -> Any | None:
@@ -156,21 +173,58 @@ def cache_get(key: str) -> Any | None:
             "SELECT payload, fetched_at, ttl_seconds FROM cache WHERE key = ?",
             (scoped_key,),
         ).fetchone()
-    if not row:
-        return None
-    payload, fetched_at, ttl = row
-    if ttl > 0 and time.time() - fetched_at > ttl:
-        return None
-    return json.loads(payload)
+        if row is None:
+            return None
+        payload, fetched_at, ttl = row
+        if ttl > 0 and time.time() - fetched_at > ttl:
+            # Delete expired rows eagerly so the cache does not grow stale
+            # entries. Conditional on fetched_at so a concurrent cache_put
+            # that just refreshed this key is not deleted.
+            conn.execute(
+                "DELETE FROM cache WHERE key = ? AND fetched_at = ?",
+                (scoped_key, fetched_at),
+            )
+            return None
+        return json.loads(payload)
+
+
+def cache_prune(max_rows: int = CACHE_MAX_ROWS) -> dict[str, int]:
+    """Delete expired rows, then evict oldest rows beyond `max_rows`."""
+    now = time.time()
+    with db() as conn:
+        expired = conn.execute(
+            "DELETE FROM cache WHERE ttl_seconds > 0 AND ? - fetched_at > ttl_seconds",
+            (now,),
+        ).rowcount
+        total = conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
+        evicted = 0
+        if total > max_rows:
+            evicted = conn.execute(
+                "DELETE FROM cache WHERE key IN ("
+                "  SELECT key FROM cache ORDER BY fetched_at ASC LIMIT ?"
+                ")",
+                (total - max_rows,),
+            ).rowcount
+    if expired or evicted:
+        log.info("cache_prune removed rows: expired=%d evicted=%d", expired, evicted)
+    return {"expired": expired, "evicted": evicted}
 
 
 def cache_put(key: str, value: Any, ttl_seconds: int) -> None:
+    global _last_prune_at
     scoped_key = f"{CACHE_NAMESPACE}:{key}"
     with db() as conn:
         conn.execute(
             "REPLACE INTO cache (key, payload, fetched_at, ttl_seconds) VALUES (?, ?, ?, ?)",
             (scoped_key, json.dumps(value, ensure_ascii=False), int(time.time()), ttl_seconds),
         )
+    now = time.monotonic()
+    if now - _last_prune_at > _PRUNE_INTERVAL_S:
+        _last_prune_at = now
+        try:
+            cache_prune()
+        except Exception:
+            log.exception("cache_prune failed")
 
 
 def seconds_until_next_trading_close() -> int:
@@ -998,7 +1052,9 @@ def klines(
                 )
                 source = "tushare_pro_bar"
     except Exception as e:
-        raise HTTPException(502, f"upstream error: {e}") from e
+        # Do not leak upstream exception details (URLs, tokens) to clients.
+        log.exception("klines upstream failed for %s", symbol)
+        raise HTTPException(502, "upstream market data error; detail logged server-side") from e
 
     if df is None or df.empty:
         cache_put(key, [], 3600)
@@ -1262,9 +1318,12 @@ def analyst(symbol: str):
     try:
         rc = _with_retries(_report_rc, ts_code=ts_code, start_date=start)
     except Exception as e:
+        # warnings keep the audit-trail detail; the error field (a failure
+        # conclusion surfaced in the UI) stays generic, detail goes to logs.
+        log.exception("tushare report_rc failed for %s", ts_code)
         out["warnings"].append(f"tushare report_rc unavailable: {e}")
         if not any(out.get(k) is not None for k in ("implied_target", "buy_count", "total_count", "consensus_eps_next", "upside_pct")):
-            out["error"] = f"report_rc unavailable: {e}"
+            out["error"] = "report_rc unavailable; detail logged server-side"
         cache_put(key, out, 60)
         return out
 
@@ -1339,12 +1398,19 @@ def analysts(symbols: str = Query(..., description="comma-separated symbols")):
             out.append(analyst(symbol))
         except Exception as e:
             detail = getattr(e, "detail", None)
+            if detail is not None:
+                # HTTPException details are already sanitized static messages.
+                message = str(detail)
+            else:
+                # Do not leak internal exception text (DB paths, URLs) to clients.
+                log.exception("analyst failed for %s", symbol)
+                message = "analyst upstream error; detail logged server-side"
             out.append({
                 "symbol": symbol,
                 "source": "akshare+baostock+tushare" if MARKET_ENABLE_TUSHARE_SECONDARY else "akshare+baostock",
                 "fetched_at": datetime.now().isoformat(),
-                "error": str(detail if detail is not None else e),
-                "warnings": [str(detail if detail is not None else e)],
+                "error": message,
+                "warnings": [message],
                 "field_sources": {},
             })
     return out
@@ -1441,7 +1507,9 @@ def spot(symbol: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, f"upstream error: {e}") from e
+        # Do not leak upstream exception details (URLs, tokens) to clients.
+        log.exception("spot upstream failed for %s", symbol)
+        raise HTTPException(502, "upstream market data error; detail logged server-side") from e
     r = df.iloc[-1]
     out = {
         "symbol": symbol,
@@ -1506,7 +1574,9 @@ def benchmark_klines(
                 end_date=end,
             )
         except Exception as e:
-            raise HTTPException(502, f"index upstream error: {e}") from e
+            # Do not leak upstream exception details (URLs, tokens) to clients.
+            log.exception("benchmark klines upstream failed for %s", index)
+            raise HTTPException(502, "upstream index data error; detail logged server-side") from e
 
     if df is None or df.empty:
         cache_put(key, [], 3600)

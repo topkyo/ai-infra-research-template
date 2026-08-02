@@ -1,7 +1,7 @@
 [project]
 name = "pyserver"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "akshare>=1.18.60",
     "baostock>=0.9.1",
