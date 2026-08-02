@@ -16,7 +16,7 @@ dashboard 侧脚本在仓库 `scripts/vps-healthcheck.sh`(每小时),其 `ALERT_
 
 ## 密钥
 
-密钥**只存 VPS 点文件,永不入库**:`~/scripts/.telegram-token`、`.telegram-chat-id`、`.slack-webhook`、`.vercel-token`(600 权限)。脚本仅引用文件路径。
+密钥**只存 VPS 点文件,永不入库**:`~/scripts/.telegram-token`、`.telegram-chat-id`、`.slack-webhook`、`.vercel-token`、`.healthchecks-ping`(600 权限)。脚本仅引用文件路径。
 
 ## 与线上副本的差异
 
@@ -25,7 +25,7 @@ dashboard 侧脚本在仓库 `scripts/vps-healthcheck.sh`(每小时),其 `ALERT_
 ## 已知限制(待后续)
 
 - **部分通道掩盖**:任一通道(TG 或 Slack)发送成功即写冷却戳;另一通道的故障在冷却期内不重试,只记 `health-alerts.log`。后续可按通道拆分冷却戳。
-- **无 dead-man's-switch**:全通道故障时只有 `health-alerts.log` 留痕,操作者无感知。待选型外部看门狗(如 healthchecks.io)。
+- **Dead-man's-switch**:已选型 Healthchecks.io 托管;由仓库 `scripts/vps-healthcheck.sh` 在结束时 ping(`~/scripts/.healthchecks-ping`)。见 Runbook §H。
 - `tunnel-watch.sh` 是 EA 专有部署自动化(改写 EA 仓库 vercel.json 并 push),vendor 仅为监控表完整存档,dashboard 不依赖它。
 
 ## 参考 crontab

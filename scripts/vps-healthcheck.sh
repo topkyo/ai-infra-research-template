@@ -12,10 +12,34 @@ WEB_URL="${WEB_URL:-http://127.0.0.1:3000/}"
 PY_URL="${PY_URL:-http://127.0.0.1:8001/health}"
 ALERT_SCRIPT="${ALERT_SCRIPT:-/home/tim/scripts/alert.sh}"
 DISK_CRIT_PCT="${DISK_CRIT_PCT:-95}"
+# Healthchecks.io dead-man's-switch (optional). File contains a single ping URL, mode 600.
+HC_PING_URL_FILE="${HC_PING_URL_FILE:-/home/tim/scripts/.healthchecks-ping}"
 
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/vps-health-$(date +%Y-%m-%d).log"
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+
+# Ping external watchdog so silence is visible when TG/Slack are both dead.
+# Success → base URL; failure → base/fail (Healthchecks.io convention). Never changes exit code.
+hc_ping() {
+  local ok="$1"
+  local url="${HEALTHCHECKS_PING_URL:-}"
+  if [ -z "$url" ] && [ -f "$HC_PING_URL_FILE" ]; then
+    url="$(tr -d ' \t\r\n' < "$HC_PING_URL_FILE" || true)"
+  fi
+  if [ -z "$url" ]; then
+    return 0
+  fi
+  if [ "$ok" -eq 0 ]; then
+    curl -fsS -m 10 "$url" >/dev/null 2>&1 \
+      && echo "[$(ts)] hc_ping ok" >>"$LOG" \
+      || echo "[$(ts)] WARN hc_ping failed (success URL)" >>"$LOG"
+  else
+    curl -fsS -m 10 "${url%/}/fail" >/dev/null 2>&1 \
+      && echo "[$(ts)] hc_ping fail-signal ok" >>"$LOG" \
+      || echo "[$(ts)] WARN hc_ping failed (fail URL)" >>"$LOG"
+  fi
+}
 
 notify() {
   local key="$1"
@@ -75,6 +99,8 @@ fail=0
 
   echo "[$(ts)] vps-healthcheck done fail=${fail}"
 } >>"$LOG" 2>&1
+
+hc_ping "$fail"
 
 find "$LOG_DIR" -maxdepth 1 -name 'vps-health-*.log' -mtime +14 -delete 2>/dev/null || true
 
