@@ -190,6 +190,12 @@ async function main() {
   const { scoreSymbols } = await import("../lib/deepseek");
   const { runBacktest } = await import("../lib/backtest");
   const { mapPool } = await import("../lib/concurrent");
+  const { resolveLlmConfig } = await import("../lib/llm/config");
+
+  // This script publishes to public docs/data — refuse offline mock signals.
+  if (resolveLlmConfig().provider === "mock") {
+    throw new Error("LLM_PROVIDER=mock: refusing to publish mock signals to docs/data");
+  }
 
   const OUT = path.resolve(__dirname, "..", "..", "docs", "data");
   fs.mkdirSync(OUT, { recursive: true });

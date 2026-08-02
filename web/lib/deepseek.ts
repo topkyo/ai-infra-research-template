@@ -73,9 +73,11 @@ export async function chatDetailed(
   const cfg = resolveLlmConfig();
   if (!llmApiKeyConfigured(cfg)) {
     throw new Error(
-      cfg.provider === "opencode-go"
-        ? "OPENCODE_GO_API_KEY is not set"
-        : "DEEPSEEK_API_KEY is not set",
+      cfg.provider === "mock"
+        ? "LLM_PROVIDER=mock: this code path has no mock implementation"
+        : cfg.provider === "opencode-go"
+          ? "OPENCODE_GO_API_KEY is not set"
+          : "DEEPSEEK_API_KEY is not set",
     );
   }
   const model = opts.model ?? cfg.model;
@@ -641,6 +643,46 @@ async function scorePortfolioTargetsBatchLlm(
   throw lastError;
 }
 
+/** Deterministic offline scoring for LLM_PROVIDER=mock (e2e/tests only).
+ *  A momentum stand-in exercises the full pipeline without network access.
+ *  Opt-in via env; production deployments never set it. */
+function mockSignalFor(snapshot: SymbolSnapshot): Signal {
+  const first = snapshot.closes[0];
+  const last = snapshot.closes[snapshot.closes.length - 1];
+  const pct = first > 0 ? (last - first) / first : 0;
+  const action = pct > 0.02 ? "buy" : pct < -0.02 ? "sell" : "hold";
+  return {
+    symbol: snapshot.symbol,
+    action,
+    confidence: 0.5,
+    size: action === "buy" ? 0.5 : 0,
+    rationale: `mock momentum ${(pct * 100).toFixed(1)}%`,
+    source: "llm-live",
+  };
+}
+
+function mockPortfolioTargetFor(snapshot: PortfolioScoringSnapshot): PortfolioTargetSignal {
+  const sig = mockSignalFor(snapshot);
+  return {
+    symbol: sig.symbol,
+    targetWeight: sig.action === "buy" ? 0.15 : 0,
+    confidence: sig.confidence,
+    rationale: sig.rationale,
+    evidence: [],
+    risks: [],
+    invalidation: "mock provider",
+    source: "llm-live",
+  };
+}
+
+function mockProviderActive(): boolean {
+  const active = resolveLlmConfig().provider === "mock";
+  if (active) {
+    console.warn("[llm] LLM_PROVIDER=mock: deterministic offline signals (test/e2e only)");
+  }
+  return active;
+}
+
 export async function scorePortfolioTargets(
   snapshots: PortfolioScoringSnapshot[],
   opts: {
@@ -672,9 +714,10 @@ export async function scorePortfolioTargets(
   }
 
   const batchSize = opts.batchSize ?? Number(process.env.LLM_SCORE_BATCH_SIZE ?? DEFAULT_SCORE_BATCH_SIZE);
+  const useMock = mockProviderActive();
   const scored: PortfolioTargetSignal[] = [];
   for (const batch of chunks(snapshots, batchSize)) {
-    scored.push(...await scorePortfolioTargetsBatchLlm(batch, opts));
+    scored.push(...(useMock ? batch.map(mockPortfolioTargetFor) : await scorePortfolioTargetsBatchLlm(batch, opts)));
     opts.onBatchProgress?.(scored.length, snapshots.length);
   }
 
@@ -714,9 +757,10 @@ export async function scoreSymbols(
   }
 
   const batchSize = opts.batchSize ?? Number(process.env.LLM_SCORE_BATCH_SIZE ?? DEFAULT_SCORE_BATCH_SIZE);
+  const useMock = mockProviderActive();
   const scored: Signal[] = [];
   for (const batch of chunks(snapshots, batchSize)) {
-    scored.push(...await scoreSymbolsBatchLlm(batch, opts));
+    scored.push(...(useMock ? batch.map(mockSignalFor) : await scoreSymbolsBatchLlm(batch, opts)));
     opts.onBatchProgress?.(scored.length, snapshots.length);
   }
 

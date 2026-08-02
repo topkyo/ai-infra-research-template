@@ -4,6 +4,7 @@ import { fetchBenchmarkKlines, fetchKlines, fetchFundamental } from "@/lib/pyser
 import { runBacktest, type BacktestConfig, type SymbolSeries } from "@/lib/backtest";
 import { mapPool } from "@/lib/concurrent";
 import { saveBacktestResult } from "@/lib/cache";
+import { resolveLlmConfig } from "@/lib/llm/config";
 
 const LOAD_CONCURRENCY = Number(process.env.BACKTEST_LOAD_CONCURRENCY ?? 6);
 const BACKTEST_PYSERVER_TIMEOUT_MS = Number(process.env.BACKTEST_PYSERVER_TIMEOUT_MS ?? 20_000);
@@ -127,8 +128,12 @@ export async function POST(req: NextRequest) {
           onLog: (message) => send({ type: "log", message }),
           benchmark: benchmarkOpt,
         });
-        const stored = saveBacktestResult(result);
-        send({ type: "log", message: `stored backtest ${stored.id}` });
+        // Mock-provider runs are test artifacts; never archive them as
+        // research output alongside real LLM backtests.
+        const stored = resolveLlmConfig().provider === "mock"
+          ? undefined
+          : saveBacktestResult(result);
+        if (stored) send({ type: "log", message: `stored backtest ${stored.id}` });
         send({ type: "result", result, stored });
         controller.close();
       } catch (e) {

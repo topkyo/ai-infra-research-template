@@ -1,4 +1,4 @@
-export type LlmProvider = "deepseek" | "opencode-go";
+export type LlmProvider = "deepseek" | "opencode-go" | "mock";
 
 export interface LlmConfig {
   provider: LlmProvider;
@@ -22,6 +22,10 @@ function normalizeBase(url: string): string {
 
 function resolveProvider(): LlmProvider {
   const explicit = process.env.LLM_PROVIDER?.trim().toLowerCase();
+  if (explicit === "mock") {
+    // Deterministic offline provider for e2e/tests; never a data source.
+    return "mock";
+  }
   if (explicit === "opencode-go" || explicit === "opencode_go" || explicit === "go") {
     return "opencode-go";
   }
@@ -45,6 +49,17 @@ export function resolveLlmConfig(): LlmConfig {
     process.env.LLM_MODEL_BACKTEST
     ?? process.env.DEEPSEEK_MODEL_BACKTEST
     ?? "deepseek-v4-flash";
+
+  if (provider === "mock") {
+    return {
+      provider,
+      apiKey: "",
+      baseUrl: "",
+      chatCompletionsUrl: "",
+      model: "mock-llm",
+      backtestModel: "mock-llm",
+    };
+  }
 
   if (provider === "opencode-go") {
     const apiKey = process.env.OPENCODE_GO_API_KEY ?? "";

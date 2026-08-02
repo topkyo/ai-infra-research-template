@@ -6,13 +6,16 @@ import { defineConfig } from "@playwright/test";
 // support macOS 12.
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 90_000,
+  // Full-flow tests run 95-symbol pipelines against a cold dev server.
+  timeout: 180_000,
   retries: 0,
   workers: 1,
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:3100",
-    channel: "chrome",
+    // Local dev runs on macOS 12 where Playwright's bundled chromium is
+    // unsupported, so drive the system Chrome; CI uses bundled chromium.
+    channel: process.env.CI ? undefined : "chrome",
     headless: true,
     navigationTimeout: 60_000,
   },
@@ -33,6 +36,8 @@ export default defineConfig({
       command: "npm run dev -- --port 3100",
       env: {
         PYSERVER_URL: "http://127.0.0.1:8101",
+        // Deterministic offline LLM so full signal/backtest flows run in tests.
+        LLM_PROVIDER: "mock",
       },
       port: 3100,
       timeout: 120_000,
