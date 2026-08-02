@@ -103,14 +103,20 @@ ssh -L 3000:127.0.0.1:3000 goyun
 
 ## H. 磁盘与监控
 
-- 日常健康检查脚本：[`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh)（磁盘占用、Compose、本机 3000/8001）。
-- 建议 cron（每天 03:30 UTC）：
-  ```bash
-  crontab -e
-  # 30 3 * * * /home/tim/github/ai-infra-dashboard/scripts/vps-healthcheck.sh
-  ```
-- 日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`；磁盘默认告警阈值 `DISK_WARN_PCT=85`。
-- 清理提示：`docker builder prune -af`、`docker image prune -a -f`（勿删正在跑的容器）；构建缓存往往是最大可回收项。
+狗云监控按故障域拆分（与 EA 共用告警通道 Telegram/Slack）：
+
+| Cron | 脚本 | 频率 | 职责 |
+|---|---|---|---|
+| platform | `~/scripts/platform-watch.sh` | */5 | 磁盘 / 内存 |
+| proxy | `~/scripts/proxy-watch.sh` | */5 | sing-box |
+| ea | `~/scripts/ea-watch.sh` | */5 | EA API / Caddy / simulators / mosquitto / cloudflared unit |
+| tunnel | `~/scripts/tunnel-watch.sh` | */5 | Tunnel URL 同步 + 外网 `/health` |
+| dashboard | [`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh) | 每天 03:30 UTC | 研究台 Compose + 3000/8001 |
+
+- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY` 冷却，默认 30–60 分钟防刷）。
+- 日志轮转：`/etc/logrotate.d/ea-vps-scripts`（daily / 14 份 / `maxsize 20M`）。
+- 研究台日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`；`DISK_WARN_PCT` 默认 85。
+- 清理提示：`docker builder prune -af`、`docker image prune -a -f`（勿删正在跑的容器）。
 
 ## 相关文档
 
