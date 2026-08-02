@@ -16,6 +16,13 @@ services:
       PYSERVER_CACHE_DB: /app/cache-data/cache.db
     volumes:
       - pyserver-cache:/app/cache-data
+    healthcheck:
+      # python:3.13-slim has no curl/wget; use stdlib urllib.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   web:
     restart: unless-stopped
@@ -55,7 +62,15 @@ services:
       UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS: ${UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS:-20000}
       PYSERVER_URL: http://pyserver:8001
     depends_on:
-      - pyserver
+      pyserver:
+        condition: service_healthy
+    healthcheck:
+      # node:22-slim has no curl/wget; Node 22 ships global fetch.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   pyserver-cache:

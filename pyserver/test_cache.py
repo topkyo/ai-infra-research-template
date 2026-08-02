@@ -26,6 +26,10 @@ class CacheMaintenanceTest(unittest.TestCase):
             return conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
 
     def test_db_uses_wal_and_busy_timeout(self) -> None:
+        # WAL is switched once by _init_db() at startup (per-connection journal
+        # mode changes race under concurrent first hits); db() connections then
+        # inherit the file's WAL mode and set their own busy_timeout.
+        main._init_db()
         with main.db() as conn:
             mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
             busy = conn.execute("PRAGMA busy_timeout").fetchone()[0]

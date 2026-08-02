@@ -131,7 +131,7 @@ def _requests_get_no_proxy(url: str, *, params: dict[str, Any], timeout: float) 
     return _market_http_get(url, params=params, timeout=timeout)
 
 
-app = FastAPI(title="silicon-civ pyserver", version="0.2.0")
+app = FastAPI(title="topkyo pyserver", version="0.2.0")
 
 # ---------- cache ----------------------------------------------------------
 
@@ -145,13 +145,28 @@ CREATE TABLE IF NOT EXISTS cache (
 """
 
 
+def _init_db() -> None:
+    # Switch to WAL once at startup. Changing journal mode needs an exclusive
+    # lock that the busy handler does not cover when other connections hold
+    # read locks, so doing it per-connection races under concurrent first hits.
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_init_db()
+
+
 @contextmanager
 def db():
     # WAL lets readers proceed alongside the single writer, and busy_timeout
     # makes concurrent writers wait instead of failing with "database is locked".
     conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute(SCHEMA)
@@ -467,10 +482,67 @@ def _to_ts_code(symbol: str) -> tuple[str, str]:
     return code + suffix, mkt
 
 
-# Tushare expects YYYYMMDD; the route accepts both forms.
-def _date(s: str) -> str:
-    s = s.replace("-", "")
+# ---------- input validation whitelist -------------------------------------
+
+# Accepted symbol shapes (case-insensitive), mirroring the README 符号规则 table:
+#   sh600519 / sz000858 / bj830799, hk00700, bare 600519 (6 digits),
+#   bare 00700 (HK 5 digits), 600519.SH / 000858.SZ / 830799.BJ / 00700.HK.
+_SYMBOL_RE = re.compile(
+    r"(?:"
+    r"(?:sh|sz|bj)\d{6}"  # prefixed A-share
+    r"|hk\d{5}"  # prefixed HK
+    r"|\d{6}"  # bare A-share
+    r"|\d{5}"  # bare HK
+    r"|\d{6}\.(?:sh|sz|bj)"  # ts-code A-share
+    r"|\d{5}\.hk"  # ts-code HK
+    r")",
+    re.IGNORECASE,
+)
+# Longest valid symbol is "600519.SH" (9 chars); cap well above that so cache
+# keys can never be injected with overlong strings.
+_SYMBOL_MAX_LEN = 12
+
+_DATE_MIN = date(1990, 1, 1)
+
+
+def _validate_symbol(symbol: str) -> str:
+    """Whitelist-check a client symbol; return the stripped value.
+
+    Raises HTTPException(400) for empty, overlong, or non-conforming input so
+    cache keys and upstream calls only ever see known symbol shapes.
+    """
+    s = (symbol or "").strip()
+    if not s:
+        raise HTTPException(400, "invalid symbol: empty")
+    if len(s) > _SYMBOL_MAX_LEN:
+        raise HTTPException(400, f"invalid symbol: longer than {_SYMBOL_MAX_LEN} chars")
+    if not _SYMBOL_RE.fullmatch(s):
+        raise HTTPException(400, f"invalid symbol format: {s[:32]!r}")
     return s
+
+
+def _validate_date(s: str, name: str) -> str:
+    """Validate a client date as YYYYMMDD or YYYY-MM-DD; return compact YYYYMMDD.
+
+    Must be a real calendar date within [1990-01-01, tomorrow].
+    Raises HTTPException(400) otherwise.
+    """
+    raw = (s or "").strip()
+    if re.fullmatch(r"\d{8}", raw):
+        compact = raw
+    elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        compact = raw.replace("-", "")
+    else:
+        raise HTTPException(400, f"invalid {name}: expected YYYYMMDD or YYYY-MM-DD")
+    try:
+        d = datetime.strptime(compact, "%Y%m%d").date()
+    except ValueError:
+        raise HTTPException(400, f"invalid {name}: not a real calendar date")
+    if d < _DATE_MIN:
+        raise HTTPException(400, f"invalid {name}: before {_DATE_MIN.isoformat()}")
+    if d > date.today() + timedelta(days=1):
+        raise HTTPException(400, f"invalid {name}: too far in the future")
+    return compact
 
 
 def _num_or_none(value: Any) -> float | None:
@@ -1008,8 +1080,9 @@ def klines(
     end: str | None = Query(None),
     adjust: str = Query("qfq", pattern="^(|qfq|hfq)$"),
 ):
-    end = end or date.today().strftime("%Y%m%d")
-    start, end = _date(start), _date(end)
+    symbol = _validate_symbol(symbol)
+    start = _validate_date(start, "start")
+    end = _validate_date(end, "end") if end else date.today().strftime("%Y%m%d")
     key = f"kline:{symbol}:{start}:{end}:{adjust}"
     cached = cache_get(key)
     if cached is not None:
@@ -1092,6 +1165,7 @@ def klines(
 
 @app.get("/fundamental", response_model=Fundamental)
 def fundamental(symbol: str):
+    symbol = _validate_symbol(symbol)
     key = f"fund:v4:{symbol}"
     cached = cache_get(key)
     if cached is not None:
@@ -1196,6 +1270,7 @@ def analyst(symbol: str):
     Aggregates EPS forecasts for next fiscal year across recent analyst
     reports; implied target = consensus EPS * current PE(TTM).
     """
+    symbol = _validate_symbol(symbol)
     key = f"analyst:v4:{symbol}"
     cached = cache_get(key)
     if cached is not None:
@@ -1388,6 +1463,9 @@ def analyst(symbol: str):
 @app.get("/analysts", response_model=list[Analyst])
 def analysts(symbols: str = Query(..., description="comma-separated symbols")):
     uniq = [s.strip() for s in symbols.split(",") if s.strip()]
+    # A single invalid symbol rejects the whole batch with 400.
+    for s in uniq:
+        _validate_symbol(s)
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for symbol in uniq:
@@ -1419,6 +1497,7 @@ def analysts(symbols: str = Query(..., description="comma-separated symbols")):
 @app.get("/spot")
 def spot(symbol: str):
     """Most-recent close (Tushare Pro has no realtime quote). 30s cache."""
+    symbol = _validate_symbol(symbol)
     key = f"spot:v3:{symbol}"
     cached = cache_get(key)
     if cached is not None:
@@ -1532,10 +1611,10 @@ def benchmark_klines(
     end: str | None = Query(None),
 ):
     """Index benchmark klines for backtest comparison."""
-    end = end or date.today().strftime("%Y%m%d")
-    start, end = _date(start), _date(end)
     if index not in BENCHMARKS:
         raise HTTPException(400, f"unknown index {index}")
+    start = _validate_date(start, "start")
+    end = _validate_date(end, "end") if end else date.today().strftime("%Y%m%d")
     ts_code, _name = BENCHMARKS[index]
     key = f"bench:{index}:{start}:{end}"
     cached = cache_get(key)
