@@ -113,9 +113,11 @@ ssh -L 3000:127.0.0.1:3000 goyun
 | tunnel | `~/scripts/tunnel-watch.sh` | */5 | Tunnel URL 同步 + 外网 `/health` |
 | dashboard | [`scripts/vps-healthcheck.sh`](../scripts/vps-healthcheck.sh) | 每天 03:30 UTC | 研究台 Compose + 3000/8001 |
 
-- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY` 冷却，默认 30–60 分钟防刷）。
+- 告警：`~/scripts/alert.sh`（`ALERT_TAG` + `ALERT_KEY`；**仅在至少一路 TG/Slack 发送成功后**写入冷却戳，默认 30–60 分钟）。无通道或发送失败会写入 `~/scripts/health-alerts.log`（并 stderr）。
+- 磁盘 paging **仅** `platform-watch`（`ALERT_KEY=disk`，阈值 `DISK_WARN_PCT` 默认 85）；研究台 healthcheck 只记磁盘日志，避免双推。
+- `health-watch.sh` 为兼容包装（`exec ea-watch.sh`），**勿再加入 cron**。
 - 日志轮转：`/etc/logrotate.d/ea-vps-scripts`（daily / 14 份 / `maxsize 20M`）。
-- 研究台日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`；`DISK_WARN_PCT` 默认 85。
+- 研究台日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`。
 - 清理提示：`docker builder prune -af`、`docker image prune -a -f`（勿删正在跑的容器）。
 
 ## 相关文档

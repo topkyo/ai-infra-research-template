@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Combo A VPS healthcheck: disk, compose, localhost endpoints.
-# Intended for cron on the VPS (SSH-tunnel mode; no public ports required).
+# Combo A VPS healthcheck: compose + localhost endpoints.
+# Disk paging is owned by ~/scripts/platform-watch.sh (same root FS); here disk is log-only.
 # Optional alerts via ~/scripts/alert.sh (Telegram/Slack) when present.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="${MONITOR_LOG_DIR:-$ROOT/.monitor/logs}"
-DISK_WARN_PCT="${DISK_WARN_PCT:-85}"
 WEB_URL="${WEB_URL:-http://127.0.0.1:3000/}"
 PY_URL="${PY_URL:-http://127.0.0.1:8001/health}"
 ALERT_SCRIPT="${ALERT_SCRIPT:-/home/tim/scripts/alert.sh}"
@@ -20,8 +19,9 @@ notify() {
   local msg="$2"
   echo "[$(ts)] WARN $msg" >>"$LOG"
   if [ -x "$ALERT_SCRIPT" ]; then
+    # stderr from alert.sh (channel failures) should land in the health log
     ALERT_TAG="[dashboard]" ALERT_KEY="$key" COOLDOWN_SEC="${COOLDOWN_SEC:-3600}" \
-      "$ALERT_SCRIPT" "$msg" 2>/dev/null || true
+      "$ALERT_SCRIPT" "$msg" >>"$LOG" 2>&1 || true
   fi
 }
 
@@ -32,11 +32,7 @@ fail=0
   disk_line="$(df -P "$ROOT" | awk 'NR==2 {print $5" "$4}')"
   pct="${disk_line%%%*}"
   avail="$(echo "$disk_line" | awk '{print $2}')"
-  echo "[$(ts)] disk used=${pct}% avail=${avail}"
-  if [ "${pct}" -ge "${DISK_WARN_PCT}" ]; then
-    fail=1
-    notify "dashboard-disk" "研究台磁盘使用率 ${pct}% >= ${DISK_WARN_PCT}%"
-  fi
+  echo "[$(ts)] disk used=${pct}% avail=${avail} (log-only; paging via platform-watch)"
 
   if command -v docker >/dev/null 2>&1; then
     if ! docker compose -f "$ROOT/docker-compose.yml" ps --status running --format '{{.Name}}' | grep -q .; then
