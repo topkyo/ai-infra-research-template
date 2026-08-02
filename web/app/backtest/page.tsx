@@ -12,6 +12,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { BacktestResult } from "@/lib/backtest";
+import { readNdjsonStream } from "@/lib/ndjson";
 
 type Phase = "loading" | "signals" | "simulating";
 
@@ -40,6 +41,7 @@ export default function BacktestPage() {
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [rebalance, setRebalance] = useState(10);
   const [maxPositions, setMaxPositions] = useState(6);
+  const [slippageBps, setSlippageBps] = useState(5);
   const [benchmarkIndex, setBenchmarkIndex] = useState("csi300");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,41 +82,32 @@ export default function BacktestPage() {
           benchmarkIndex,
           startCash: 1_000_000,
           feeBps: 10,
+          slippageBps,
         }),
       });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
 
-      const reader = r.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, nl);
-          buf = buf.slice(nl + 1);
-          if (!line) continue;
-          const evt = JSON.parse(line) as
-            | { type: "progress"; phase: Phase; done: number; total: number }
-            | { type: "log"; message: string }
-            | { type: "result"; result: BacktestResult }
-            | { type: "error"; message: string };
-          if (evt.type === "progress") {
-            setProgress({ phase: evt.phase, done: evt.done, total: evt.total });
-          } else if (evt.type === "log") {
-            setLogs((prev) => [...prev, evt.message]);
-          } else if (evt.type === "result") {
-            gotResult = true;
-            setResult(evt.result);
-          } else if (evt.type === "error") {
-            gotError = true;
-            setResult(null);
-            setError(evt.message);
-          }
+      type Evt =
+        | { type: "progress"; phase: Phase; done: number; total: number }
+        | { type: "log"; message: string }
+        | { type: "result"; result: BacktestResult }
+        | { type: "error"; message: string };
+      await readNdjsonStream<Evt>(r.body, (evt) => {
+        if (evt.type === "progress") {
+          setProgress({ phase: evt.phase, done: evt.done, total: evt.total });
+        } else if (evt.type === "log") {
+          setLogs((prev) => [...prev, evt.message]);
+        } else if (evt.type === "result") {
+          gotResult = true;
+          setResult(evt.result);
+        } else if (evt.type === "error") {
+          gotError = true;
+          setResult(null);
+          setError(evt.message);
         }
-      }
+      }, (line) => {
+        setLogs((prev) => [...prev, `跳过无法解析的响应行（${line.length} 字符）`]);
+      });
       if (!gotResult && !gotError) {
         setError(
           "回测未完成（连接中断或服务超时）。请先缩短日期区间（如 1–3 个月）试跑，或查看 ~/Library/Logs/topkyo-ai-infra/*.log",
@@ -136,7 +129,7 @@ export default function BacktestPage() {
         <div>
           <div className="eyebrow">{SITE_EYEBROW}</div>
           <h1>策略回测</h1>
-          <p>按固定周期严格重配，使用单边费率、最大持仓数与基准指数对比。任一调仓日信号失败时回测终止，不生成权益曲线。</p>
+          <p>按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，与基准指数对比。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。</p>
         </div>
       </header>
 
@@ -158,6 +151,11 @@ export default function BacktestPage() {
           <span>最大持仓数</span>
           <input type="number" min={1} max={20} value={maxPositions}
             onChange={(e) => setMaxPositions(+e.target.value)} />
+        </label>
+        <label className="field">
+          <span>滑点(bps)</span>
+          <input type="number" min={0} max={100} value={slippageBps}
+            onChange={(e) => setSlippageBps(+e.target.value)} />
         </label>
         <label className="field">
           <span>基准指数</span>
@@ -213,6 +211,17 @@ export default function BacktestPage() {
       {error && (
         <div className="card" style={{ marginTop: 16, borderColor: "var(--danger)" }}>
           <strong>失败：</strong> {error}
+        </div>
+      )}
+
+      {result && result.warnings && result.warnings.length > 0 && (
+        <div className="card" style={{ marginTop: 16, borderColor: "var(--warn)" }}>
+          <strong>数据警告（{result.warnings.length}）：</strong>
+          调仓日存在缺行情（停牌/缺数据）标的，已跳过其交易并按最近收盘价估值。
+          <details style={{ marginTop: 6 }}>
+            <summary>查看明细</summary>
+            {result.warnings.slice(0, 20).map((w, i) => <div key={i}>· {w}</div>)}
+          </details>
         </div>
       )}
 

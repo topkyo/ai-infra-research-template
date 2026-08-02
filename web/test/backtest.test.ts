@@ -119,7 +119,7 @@ test("runBacktest attaches benchmark curve when provided", async () => {
   assert.ok(typeof r.stats.excessReturnPct === "number");
 });
 
-test("strict rebalance sells stale holdings before buying the new top signal", async () => {
+test("delta rebalance sells stale holdings before buying the new top signal", async () => {
   const rotatingScorer: Scorer = async (snapshots, opts) =>
     snapshots.map((s) => ({
       symbol: s.symbol,
@@ -134,7 +134,7 @@ test("strict rebalance sells stale holdings before buying the new top signal", a
   assert.ok(jan8Trades.some((t) => t.side === "buy" && t.symbol === "B"), "expected B to be bought");
 });
 
-test("strict rebalance keeps maxPositions as a hard cap", async () => {
+test("rebalance keeps maxPositions as a hard cap", async () => {
   const manySeries: SymbolSeries[] = ["A", "B", "C"].map((symbol, offset) => ({
     entry: { symbol, name: symbol, theme: "T" },
     klines: makeKlines("2025-01-01", Array.from({ length: 80 }, (_, i) => 100 + i + offset)),
@@ -180,4 +180,127 @@ test("feeBps is applied as a one-way trading fee on buys", async () => {
   );
   assert.equal(r.equityCurve[0].positions.A.shares, 9900);
   assert.equal(r.equityCurve[0].cash, 100);
+});
+
+test("slippageBps worsens execution prices on buys", async () => {
+  const flatSeries: SymbolSeries[] = [
+    {
+      entry: { symbol: "A", name: "Flat", theme: "T" },
+      klines: makeKlines("2025-01-01", Array.from({ length: 10 }, () => 100)),
+    },
+  ];
+  const buyScorer: Scorer = async (snapshots) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: "buy",
+      confidence: 1,
+      size: 1,
+      rationale: "buy",
+    }));
+  const r = await runBacktest(
+    flatSeries,
+    { ...cfg, rebalanceEveryNDays: 100, feeBps: 0, slippageBps: 10 },
+    { scorer: buyScorer },
+  );
+  const buy = r.trades.find((t) => t.side === "buy")!;
+  assert.equal(buy.price, 100.1); // 100 * (1 + 10bps)
+  assert.equal(buy.shares, 9900); // floor(1_000_000 / 100.1 / 100) * 100
+  assert.equal(r.equityCurve[0].cash, 9010);
+});
+
+test("slippageBps worsens execution prices on sells", async () => {
+  const flatSeries: SymbolSeries[] = [
+    { entry: { symbol: "A", name: "Flat", theme: "T" }, klines: makeKlines("2025-01-01", Array.from({ length: 10 }, () => 100)) },
+    { entry: { symbol: "B", name: "Flat2", theme: "T" }, klines: makeKlines("2025-01-01", Array.from({ length: 10 }, () => 100)) },
+  ];
+  // Buy A on day 0, rotate to B on the next rebalance day -> A is sold.
+  const rotScorer: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: s.symbol === (opts.asOf < "2025-01-08" ? "A" : "B") ? "buy" : "hold",
+      confidence: 1,
+      size: s.symbol === (opts.asOf < "2025-01-08" ? "A" : "B") ? 1 : 0,
+      rationale: "rotate",
+    }));
+  const r = await runBacktest(
+    flatSeries,
+    { ...cfg, rebalanceEveryNDays: 5, feeBps: 0, slippageBps: 10 },
+    { scorer: rotScorer },
+  );
+  const sell = r.trades.find((t) => t.side === "sell" && t.symbol === "A")!;
+  assert.equal(sell.price, 99.9); // 100 * (1 - 10bps)
+});
+
+test("buy signals for never-priced symbols surface an explicit warning", async () => {
+  // L's bars start mid-window (e.g. IPO): before its first bar there is no
+  // price to trade or mark at, so the buy signal must be flagged, not dropped.
+  const series: SymbolSeries[] = [
+    { entry: { symbol: "A", name: "Up", theme: "T" }, klines: makeKlines("2025-01-01", Array.from({ length: 80 }, (_, i) => 100 + i)) },
+    { entry: { symbol: "L", name: "Late", theme: "T" }, klines: makeKlines("2025-02-17", Array.from({ length: 40 }, (_, i) => 50 + i * 0.5)) },
+  ];
+  const buyL: Scorer = async (snapshots) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: s.symbol === "L" ? "buy" : "hold",
+      confidence: 1,
+      size: s.symbol === "L" ? 1 : 0,
+      rationale: "test",
+    }));
+  const r = await runBacktest(series, cfg, { scorer: buyL });
+  assert.ok(r.warnings?.some((w) => w.includes("L") && w.includes("尚无行情")));
+  assert.ok(!r.trades.some((t) => t.symbol === "L" && t.date < "2025-02-17"));
+  assert.ok(r.trades.some((t) => t.symbol === "L" && t.side === "buy"));
+});
+
+test("delta rebalance does not wash positions that stay in the TopN", async () => {
+  // A is the top signal at every rebalance — it must never be sold just to be
+  // rebought (the old liquidate-then-rebuild behavior paid fee twice).
+  const r = await runBacktest(makeSeries(), { ...cfg, feeBps: 100 }, { scorer });
+  const sells = r.trades.filter((t) => t.side === "sell");
+  assert.equal(sells.length, 0, "no sell trades expected while A stays in the TopN");
+});
+
+function dropDate(klines: Kline[], date: string): Kline[] {
+  return klines.filter((k) => k.date !== date);
+}
+
+test("suspension on rebalance day skips the untradable buy and records a warning", async () => {
+  const series = makeSeries();
+  series[1] = { ...series[1], klines: dropDate(series[1].klines, "2025-01-08") };
+  const rotatingScorer: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: s.symbol === (opts.asOf < "2025-01-08" ? "A" : "B") ? "buy" : "hold",
+      confidence: 1,
+      size: s.symbol === (opts.asOf < "2025-01-08" ? "A" : "B") ? 1 : 0,
+      rationale: "rotate",
+    }));
+  const r = await runBacktest(series, cfg, { scorer: rotatingScorer });
+  // B has no bar on 2025-01-08: no B trade that day, warning recorded, but the
+  // day itself is kept (union alignment) and B is bought next rebalance day.
+  assert.ok(!r.trades.some((t) => t.date === "2025-01-08" && t.symbol === "B"));
+  assert.ok(r.warnings?.some((w) => w.includes("2025-01-08") && w.includes("B")));
+  assert.ok(r.equityCurve.some((b) => b.date === "2025-01-08"));
+  assert.ok(r.trades.some((t) => t.date === "2025-01-15" && t.symbol === "B" && t.side === "buy"));
+});
+
+test("held position that turns untradable on rebalance day is kept and marked at last close", async () => {
+  const series = makeSeries();
+  series[1] = { ...series[1], klines: dropDate(series[1].klines, "2025-01-08") };
+  const holdBThenA: Scorer = async (snapshots, opts) =>
+    snapshots.map((s) => ({
+      symbol: s.symbol,
+      action: s.symbol === (opts.asOf < "2025-01-08" ? "B" : "A") ? "buy" : "hold",
+      confidence: 1,
+      size: s.symbol === (opts.asOf < "2025-01-08" ? "B" : "A") ? 1 : 0,
+      rationale: "rotate",
+    }));
+  const r = await runBacktest(series, cfg, { scorer: holdBThenA });
+  // B cannot be sold on 2025-01-08 (no bar); the position survives at the
+  // 2025-01-07 close (98.5) instead of being force-liquidated or dropped.
+  assert.ok(!r.trades.some((t) => t.date === "2025-01-08" && t.symbol === "B" && t.side === "sell"));
+  const bar = r.equityCurve.find((b) => b.date === "2025-01-08")!;
+  assert.ok(bar.positions.B, "B position should survive its suspended rebalance day");
+  assert.equal(bar.positions.B.price, 98.5);
+  assert.ok(r.warnings?.some((w) => w.includes("B")));
 });

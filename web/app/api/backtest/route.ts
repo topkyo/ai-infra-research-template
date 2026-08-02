@@ -24,12 +24,19 @@ export async function POST(req: NextRequest) {
     benchmarkIndex?: string;
   };
 
+  const envSlippage = Number(process.env.BACKTEST_SLIPPAGE_BPS ?? 0);
+  const envSlippageValid = Number.isFinite(envSlippage) && envSlippage >= 0 && envSlippage <= 100;
+  const bodySlippage = Number(body.slippageBps);
+  const bodySlippageValid = body.slippageBps != null
+    && Number.isFinite(bodySlippage) && bodySlippage >= 0 && bodySlippage <= 100;
+  const slippageBps = bodySlippageValid ? bodySlippage : envSlippageValid ? envSlippage : 0;
   const cfg: BacktestConfig = {
     startCash: body.startCash ?? 1_000_000,
     rebalanceEveryNDays: body.rebalanceEveryNDays ?? 10,
     startDate: body.startDate,
     endDate: body.endDate,
     feeBps: body.feeBps ?? 10,
+    slippageBps,
     maxPositions: body.maxPositions ?? 6,
   };
 

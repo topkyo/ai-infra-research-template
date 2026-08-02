@@ -14,6 +14,7 @@ export interface BacktestConfig {
   startDate: string;         // YYYY-MM-DD
   endDate: string;
   feeBps: number;            // one-way trading fee in basis points
+  slippageBps?: number;      // one-way slippage in basis points (default 0)
   maxPositions: number;
 }
 
@@ -35,6 +36,8 @@ export interface BacktestResult {
     price: number;
   }>;
   signalsByDate: Record<string, Signal[]>;
+  /** Auditable data gaps, e.g. symbols without a bar on a rebalance day. */
+  warnings?: string[];
   stats: {
     totalReturnPct: number;
     cagrPct: number;
@@ -66,13 +69,13 @@ export interface SymbolSeries {
 }
 
 function alignedTradingDates(series: SymbolSeries[]): string[] {
-  const sets = series.map((s) => new Set(s.klines.map((k) => k.date)));
+  // Union of all series' dates. A symbol without a bar on a given date (e.g.
+  // suspension) is marked at its last available close and cannot trade that
+  // day, instead of dropping the day for the whole portfolio (intersection
+  // would let one suspended name compress the entire sample).
   const all = new Set<string>();
   series.forEach((s) => s.klines.forEach((k) => all.add(k.date)));
-  // intersection — only dates present in all series, to keep portfolio aligned
-  return [...all]
-    .filter((d) => sets.every((s) => s.has(d)))
-    .sort();
+  return [...all].sort();
 }
 
 function indexByDate(klines: Kline[]) {
@@ -239,55 +242,123 @@ export async function runBacktest(
   const shares: Record<string, number> = Object.fromEntries(symbols.map((s) => [s, 0]));
   const equityCurve: PortfolioBar[] = [];
   const trades: BacktestResult["trades"] = [];
+  const warnings: string[] = [];
   const fee = cfg.feeBps / 10_000;
+  const slip = (cfg.slippageBps ?? 0) / 10_000;
+  const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
+
+  const noteWarning = (message: string) => {
+    if (warnings.length < 200) {
+      warnings.push(message);
+    } else if (warnings.length === 200) {
+      warnings.push("...后续警告已截断");
+    }
+    onLog?.(message);
+  };
 
   const progressEvery = Math.max(1, Math.floor(dates.length / 20));
   onProgress?.({ phase: "simulating", done: 0, total: dates.length });
+  const lastClose: (number | undefined)[] = series.map(() => undefined);
   for (let i = 0; i < dates.length; i++) {
     const date = dates[i];
     if (i % progressEvery === 0 || i === dates.length - 1) {
       onProgress?.({ phase: "simulating", done: i + 1, total: dates.length });
     }
+    // Mark prices: today's close when a bar exists, otherwise carry the last
+    // known close forward. Only symbols with a real bar today are tradable.
     const prices: Record<string, number> = {};
+    const tradable: Record<string, boolean> = {};
     for (let j = 0; j < symbols.length; j++) {
-      const k = byDate[j].get(date)!;
-      prices[symbols[j]] = k.close;
+      const k = byDate[j].get(date);
+      if (k) {
+        lastClose[j] = k.close;
+        tradable[symbols[j]] = true;
+      }
+      const px = lastClose[j];
+      if (px !== undefined) prices[symbols[j]] = px;
     }
 
     // Rebalance day?
     if (i % cfg.rebalanceEveryNDays === 0) {
       const signals = signalsByDate[date] ?? [];
 
-      // Strict rebalance: liquidate current holdings, then rebuild only from
-      // the current buy TopN. This keeps maxPositions as a hard constraint.
+      // Buy candidates with no price at all in the window (e.g. mid-window
+      // IPO, or suspended since before startDate) can never trade. Surface
+      // them explicitly instead of silently dropping the signal.
+      const buySignals = signals.filter((s) => s.action === "buy" && s.size > 0);
+      for (const s of buySignals) {
+        if (prices[s.symbol] === undefined) {
+          noteWarning(`${date} 调仓日 ${s.symbol} 窗口内尚无行情，无法买入`);
+        }
+      }
+      const buys = buySignals
+        .filter((s) => (prices[s.symbol] ?? 0) > 0)
+        .sort((a, b) => b.confidence * b.size - a.confidence * a.size)
+        .slice(0, cfg.maxPositions);
+
+      // Delta rebalance: size targets from current equity, then trade only the
+      // difference. Positions staying in the TopN are adjusted in place instead
+      // of washed through a sell→buy round-trip (which paid fee+slippage twice);
+      // positions that left the TopN exit fully. maxPositions stays a hard cap.
+      let equity = cash;
+      for (const sym of symbols) {
+        if ((shares[sym] ?? 0) > 0 && prices[sym] !== undefined) {
+          equity += shares[sym] * prices[sym];
+        }
+      }
+      const totalWeight = buys.reduce((sum, s) => sum + s.size * s.confidence, 0) || 1;
+      const targetValue = new Map<string, number>();
+      for (const sig of buys) {
+        targetValue.set(sig.symbol, equity * ((sig.size * sig.confidence) / totalWeight));
+      }
+
+      const skipUntradable = (sym: string) => {
+        noteWarning(`${date} 调仓日 ${sym} 无当日行情（停牌或缺数据），跳过交易，持仓按最近收盘价估值`);
+      };
+
+      // Sells first (full exits, then overweight trims) so cash is available.
       for (const sym of symbols) {
         const held = shares[sym] ?? 0;
         if (held <= 0) continue;
         const px = prices[sym];
-        cash += held * px * (1 - fee);
-        trades.push({ date, symbol: sym, side: "sell", shares: held, price: px });
-        shares[sym] = 0;
+        if (px === undefined) continue;
+        const target = targetValue.get(sym) ?? 0;
+        const excessValue = held * px - target;
+        if (excessValue <= 0) continue;
+        if (!tradable[sym]) {
+          skipUntradable(sym);
+          continue;
+        }
+        const exec = round4(px * (1 - slip));
+        const sh = target > 0
+          ? Math.min(held, Math.floor(excessValue / exec / 100) * 100)
+          : held;
+        if (sh <= 0) continue;
+        cash += sh * exec * (1 - fee);
+        shares[sym] = held - sh;
+        trades.push({ date, symbol: sym, side: "sell", shares: sh, price: exec });
       }
 
-      const buys = signals
-        .filter((s) => s.action === "buy" && s.size > 0 && prices[s.symbol] > 0)
-        .sort((a, b) => b.confidence * b.size - a.confidence * a.size)
-        .slice(0, cfg.maxPositions);
-
-      const totalWeight = buys.reduce((sum, s) => sum + s.size * s.confidence, 0) || 1;
-      const budget = cash;
+      // Buys: bring underweight targets up toward their target value.
       for (const sig of buys) {
-        const weight = (sig.size * sig.confidence) / totalWeight;
-        const alloc = budget * weight;
-        const px = prices[sig.symbol];
-        if (!px || alloc <= 0) continue;
-        const sh = Math.floor(alloc / (px * (1 + fee)) / 100) * 100; // round to 100-lot
+        const sym = sig.symbol;
+        const px = prices[sym];
+        if (px === undefined) continue;
+        const held = shares[sym] ?? 0;
+        const deficit = (targetValue.get(sym) ?? 0) - held * px;
+        if (deficit <= 0) continue;
+        if (!tradable[sym]) {
+          skipUntradable(sym);
+          continue;
+        }
+        const exec = round4(px * (1 + slip));
+        const sh = Math.floor(Math.min(deficit, cash) / (exec * (1 + fee)) / 100) * 100; // 100-lot
         if (sh <= 0) continue;
-        const cost = sh * px * (1 + fee);
+        const cost = sh * exec * (1 + fee);
         if (cost > cash) continue;
         cash -= cost;
-        shares[sig.symbol] = (shares[sig.symbol] ?? 0) + sh;
-        trades.push({ date, symbol: sig.symbol, side: "buy", shares: sh, price: px });
+        shares[sym] = held + sh;
+        trades.push({ date, symbol: sym, side: "buy", shares: sh, price: exec });
       }
     }
 
@@ -295,7 +366,7 @@ export async function runBacktest(
     let equity = cash;
     const positions: PortfolioBar["positions"] = {};
     for (const sym of symbols) {
-      if (shares[sym] > 0) {
+      if (shares[sym] > 0 && prices[sym] !== undefined) {
         const px = prices[sym];
         equity += shares[sym] * px;
         positions[sym] = { shares: shares[sym], price: px };
@@ -359,6 +430,7 @@ export async function runBacktest(
     equityCurve,
     trades,
     signalsByDate,
+    warnings: warnings.length > 0 ? warnings : undefined,
     stats,
     benchmark,
   };
