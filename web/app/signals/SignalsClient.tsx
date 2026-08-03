@@ -52,11 +52,7 @@ export default function SignalsClient() {
   function selectMode(nextMode: PortfolioMode) {
     setMode(nextMode);
     resetOutput();
-  }
-
-  function runPaperMode() {
-    setMode("paper");
-    void run("paper");
+    void run(nextMode);
   }
 
   async function handleHoldingsSaved() {
@@ -170,7 +166,7 @@ export default function SignalsClient() {
           onClearError={() => setError(null)}
           onSaved={handleHoldingsSaved}
           onRetryReal={() => { void run("real"); }}
-          onRunPaper={runPaperMode}
+          onRunPaper={() => selectMode("paper")}
         />
       )}
 

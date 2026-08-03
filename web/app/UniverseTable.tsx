@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { UniverseEntry } from "@/lib/universe";
 
 interface Analyst {
@@ -220,6 +220,12 @@ export default function UniverseTable({
     total: entries.length,
   }));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Latest rows for the watchdog timer, so it can tell which rows are
+  // still in-flight without side effects inside state updaters.
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   // Re-seed when entries prop changes (after refresh).
   useEffect(() => {
@@ -256,6 +262,29 @@ export default function UniverseTable({
       total: symbols.length,
     });
 
+    // Watchdog: if the batch loops hang past 45s (cold-start serial fetches
+    // can legitimately run long), rows still in-flight must surface an
+    // explicit timeout failure — never silently flip "…" to "无".
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      const timedOut = rowsRef.current.filter((r) => r.loading).map((r) => r.symbol);
+      if (timedOut.length > 0) {
+        setErrors((prev) => {
+          const next = { ...prev };
+          for (const symbol of timedOut) {
+            next[symbol] ??= "加载超时";
+          }
+          return next;
+        });
+        setRows((prev) => prev.map((r) => (r.loading ? { ...r, loading: false } : r)));
+      }
+      setProgress((prev) => ({
+        ...prev,
+        spotDone: symbols.length,
+        analystDone: symbols.length,
+      }));
+    }, 45_000);
+
     async function loadSpotInBatches() {
       const pending = symbols.filter((symbol) => !cachedSpotSymbols.has(symbol));
       for (let i = 0; i < pending.length; i += SPOT_BATCH_SIZE) {
@@ -276,18 +305,6 @@ export default function UniverseTable({
         setRows((prev) => mergeSpots(prev, spots));
       }
     }
-    loadSpotInBatches();
-
-    const timer = setTimeout(() => {
-      if (!cancelled) {
-        setProgress((prev) => ({
-          ...prev,
-          spotDone: symbols.length,
-          analystDone: symbols.length,
-        }));
-        setRows((prev) => prev.map((r) => ({ ...r, loading: false })));
-      }
-    }, 45_000);
 
     async function loadInBatches() {
       const pending = symbols.filter((symbol) => !cachedAnalystSymbols.has(symbol));
@@ -308,9 +325,14 @@ export default function UniverseTable({
         }));
         setRows((prev) => mergeAnalysts(prev, analysts, batch));
       }
-      clearTimeout(timer);
     }
-    loadInBatches();
+
+    // Clear the watchdog exactly when BOTH loops settle (completion or
+    // failure); previously only the analyst loop cleared it, so the spot
+    // loop hanging could not be distinguished from a slow analyst loop.
+    void Promise.allSettled([loadSpotInBatches(), loadInBatches()]).then(() => {
+      clearTimeout(timer);
+    });
     return () => {
       cancelled = true;
       clearTimeout(timer);
