@@ -15,6 +15,17 @@ export async function POST(_req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       };
       try {
+        // Read-only deployments (production compose sets UNIVERSE_REFRESH_ENABLED=0):
+        // fail explicitly instead of writing an ephemeral container file that
+        // diverges from git and is lost on the next recreate.
+        if (process.env.UNIVERSE_REFRESH_ENABLED === "0") {
+          send({
+            type: "error",
+            message: "当前部署为只读股票池：请在本地运行 cd web && npx tsx scripts/refresh-universe.ts，审查 diff 后提交部署",
+          });
+          controller.close();
+          return;
+        }
         const current = readUniverse();
         send({ type: "log", message: `当前股票池 ${current.entries.length} 只，请求 LLM 提议变更…` });
 

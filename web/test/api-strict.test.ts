@@ -159,3 +159,20 @@ test("/api/universe/refresh emits terminal error and leaves file unchanged when 
     delete process.env.DEEPSEEK_API_KEY;
   }
 });
+
+test("/api/universe/refresh refuses explicitly on read-only deployments", async () => {
+  const before = fs.readFileSync("data/universe.json", "utf-8");
+  process.env.UNIVERSE_REFRESH_ENABLED = "0";
+  try {
+    const { POST } = await import("../app/api/universe/refresh/route");
+    const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", { method: "POST" })));
+    const terminal = events.at(-1);
+    assert.equal(terminal?.type, "error");
+    assert.match(String(terminal?.message), /只读股票池/);
+    // The gate fires before any LLM/market call: no log progress, no result.
+    assert.equal(events.some((event) => event.type === "result"), false);
+    assert.equal(fs.readFileSync("data/universe.json", "utf-8"), before);
+  } finally {
+    delete process.env.UNIVERSE_REFRESH_ENABLED;
+  }
+});

@@ -14,7 +14,7 @@ interface RefreshResult {
   finalCount: number;
 }
 
-export default function RefreshUniverseButton() {
+export default function RefreshUniverseButton({ disabled = false }: { disabled?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -64,9 +64,16 @@ export default function RefreshUniverseButton() {
 
   return (
     <div>
-      <button onClick={run} disabled={busy}>
+      <button
+        onClick={run}
+        disabled={busy || disabled}
+        title={disabled ? "生产部署为只读股票池：请在本地刷新，审查后提交部署" : undefined}
+      >
         {busy ? "刷新中…" : "DeepSeek 刷新股票池"}
       </button>
+      {disabled && (
+        <span className="toolbar-status">只读部署：股票池刷新请在本地进行并提交</span>
+      )}
 
       {(busy || logs.length > 0 || result || error) && (
         <div className="card" style={{ marginTop: 12, fontSize: 12 }}>

@@ -54,7 +54,7 @@ export default function Home() {
           <h2>股票池</h2>
           <p>筛选主题标的，查看现价、分析师一致预期与数据加载状态。</p>
         </div>
-        <RefreshUniverseButton />
+        <RefreshUniverseButton disabled={process.env.UNIVERSE_REFRESH_ENABLED === "0"} />
       </div>
 
       <UniverseTable entries={entries} />
