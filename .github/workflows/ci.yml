@@ -140,7 +140,7 @@ jobs:
         # main.py but not listed in Dockerfile COPY) that docker build alone
         # cannot detect — the image builds fine, but uvicorn would crash with
         # ModuleNotFoundError on startup.
-        run: docker run --rm --env TUSHARE_TOKEN=dummy topkyo-pyserver-ci python -c "import cache, validation, main; print('pyserver imports OK')"
+        run: docker run --rm --env TUSHARE_TOKEN=dummy topkyo-pyserver-ci python -c "import cache, validation, analyst, main; print('pyserver imports OK')"
 
       - name: Build web image
         run: docker build -t topkyo-web-ci ./web

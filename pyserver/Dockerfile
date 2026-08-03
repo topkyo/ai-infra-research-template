@@ -2,7 +2,7 @@ FROM python:3.13-slim
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
-COPY main.py mock_data.py cache.py validation.py ./
+COPY main.py mock_data.py cache.py validation.py analyst.py ./
 # Empty token = free live sources (akshare/baostock); set "mock" only for demos/tests.
 ENV TUSHARE_TOKEN=""
 EXPOSE 8001

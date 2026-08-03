@@ -16,6 +16,7 @@ from fastapi import HTTPException
 
 import cache as cache_mod
 import main
+import analyst as analyst_mod
 
 
 def _assert_400(testcase: unittest.TestCase, fn, *args, **kwargs) -> None:
@@ -125,10 +126,10 @@ class EndpointValidationTest(unittest.TestCase):
         _assert_400(self, main.fundamental, symbol="x" * 64)
 
     def test_analyst_rejects_bad_symbol(self) -> None:
-        _assert_400(self, main.analyst, symbol="bad/symbol")
+        _assert_400(self, analyst_mod.analyst, symbol="bad/symbol")
 
     def test_analysts_rejects_single_bad_symbol_in_batch(self) -> None:
-        _assert_400(self, main.analysts, symbols="600519,bad/symbol,000858")
+        _assert_400(self, analyst_mod.analysts, symbols="600519,bad/symbol,000858")
 
     def test_spot_rejects_bad_symbol(self) -> None:
         _assert_400(self, main.spot, symbol="")
@@ -149,7 +150,7 @@ class AnalystsBatchCapTest(unittest.TestCase):
     def test_rejects_51_symbols(self) -> None:
         symbols = ",".join(f"6005{i:02d}" for i in range(51))
         with self.assertRaises(HTTPException) as ctx:
-            main.analysts(symbols=symbols)
+            analyst_mod.analysts(symbols=symbols)
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("最多 50", str(ctx.exception.detail))
 
@@ -158,10 +159,10 @@ class AnalystsBatchCapTest(unittest.TestCase):
         # so the test does not depend on network/upstream availability.
         # patch.object on the already-imported module: test_tushare_bootstrap
         # pops "main" from sys.modules, so a string target like
-        # patch("main.analyst") could re-import a fresh module and miss.
+        # patch("analyst.analyst") could re-import a fresh module and miss.
         symbols = ",".join(f"6005{i:02d}" for i in range(50))
-        with patch.object(main, "analyst", return_value={"symbol": "600500"}) as mock_analyst:
-            out = main.analysts(symbols=symbols)
+        with patch.object(analyst_mod, "analyst", return_value={"symbol": "600500"}) as mock_analyst:
+            out = analyst_mod.analysts(symbols=symbols)
         self.assertEqual(mock_analyst.call_count, 50)
         self.assertEqual(len(out), 50)
 
