@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { readNdjsonStream } from "@/lib/ndjson";
 import type { UniverseEntry } from "@/lib/universe";
 
@@ -90,6 +90,9 @@ export function useSignalStream({ mode, paperCash }: UseSignalStreamOptions) {
   const [setupRequired, setSetupRequired] = useState<SetupRequired | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const runTokenRef = useRef(0);
+
   function resetOutput() {
     setError(null);
     setRows([]);
@@ -100,6 +103,11 @@ export function useSignalStream({ mode, paperCash }: UseSignalStreamOptions) {
   }
 
   async function run(requestedMode = mode) {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    runTokenRef.current += 1;
+    const token = runTokenRef.current;
     setLoading(true);
     resetOutput();
     try {
@@ -110,6 +118,7 @@ export function useSignalStream({ mode, paperCash }: UseSignalStreamOptions) {
           mode: requestedMode,
           paperCash: requestedMode === "paper" ? paperCash : undefined,
         }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
       type Evt =
@@ -118,6 +127,7 @@ export function useSignalStream({ mode, paperCash }: UseSignalStreamOptions) {
         | { type: "setup_required"; code: "holdings_missing" | "holdings_invalid"; message: string; filePath: string }
         | { type: "error"; message: string };
       await readNdjsonStream<Evt>(response.body, (evt) => {
+        if (token !== runTokenRef.current) return;
         if (evt.type === "progress") {
           setProgress({ phase: evt.phase, done: evt.done, total: evt.total });
         } else if (evt.type === "result") {
@@ -137,12 +147,15 @@ export function useSignalStream({ mode, paperCash }: UseSignalStreamOptions) {
           setError(evt.message);
         }
       }, (line) => {
+        if (token !== runTokenRef.current) return;
         setNotices((prev) => [...prev, `跳过无法解析的响应行（${line.length} 字符）`]);
       });
     } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
+      if (token !== runTokenRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (token === runTokenRef.current) setLoading(false);
     }
   }
 

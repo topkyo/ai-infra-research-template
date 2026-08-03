@@ -7,14 +7,18 @@ import { test, expect } from "@playwright/test";
 test("signals paper mode produces target weights end-to-end", async ({ page }) => {
   await page.goto("/signals");
   await expect(page.getByRole("heading", { name: "持仓信号" })).toBeVisible();
-  // Let the initial real-mode auto-run settle first: setup card on a fresh
-  // checkout, or results when a local holdings file exists.
+  // Confirm the client has hydrated: the real-mode auto-run drives a
+  // client-only state change (loading indicator, setup card, or results).
+  // The mode buttons are disabled while loading, so we click 模拟资金 the
+  // moment hydration is proven — right after the initial run releases the
+  // buttons — exercising the AbortController path: the prior run token is
+  // superseded and any stale events are ignored.
   await expect(
-    page.getByText("配置真实持仓").or(page.getByText("信号日期")),
+    page
+      .getByText("运行中…")
+      .or(page.getByText("配置真实持仓"))
+      .or(page.getByText("信号日期")),
   ).toBeVisible({ timeout: 60_000 });
-  // Switch to paper mode and confirm the switch landed (paper cash field only
-  // renders in paper mode). The mode switch starts the run automatically —
-  // clicking 运行信号 here would trigger a second run.
   await page.getByRole("button", { name: "模拟资金" }).click();
   await expect(page.getByLabel("模拟资金")).toBeVisible();
   // Result: KPI block + target-weight table with rows.
@@ -24,9 +28,15 @@ test("signals paper mode produces target weights end-to-end", async ({ page }) =
 });
 
 test("backtest runs to an equity curve with mock LLM", async ({ page }) => {
+  // Use relative dates so the test never goes stale. The mock pyserver
+  // generates synthetic klines for any date range, so we pick a recent
+  // ~6-week window ending today.
+  const today = new Date();
+  const start = new Date(today.getTime() - 45 * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
   await page.goto("/backtest");
-  await page.getByLabel("起始").fill("2026-06-01");
-  await page.getByLabel("结束").fill("2026-07-15");
+  await page.getByLabel("起始").fill(fmt(start));
+  await page.getByLabel("结束").fill(fmt(today));
   await page.getByLabel("调仓周期").fill("5");
   await page.getByRole("button", { name: "运行回测" }).click();
   // Result: KPI cards + rendered recharts equity curve.
