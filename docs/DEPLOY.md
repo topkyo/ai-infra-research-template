@@ -58,8 +58,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-v4-flash
 LLM_MODEL_BACKTEST=deepseek-v4-flash
 
-# Docker Compose 默认镜像内 TUSHARE_TOKEN=mock。
-# 使用免费真实源时，用这个占位值覆盖 mock；不启用 Tushare 次级源。
+# Docker Compose 镜像内 TUSHARE_TOKEN 默认为空（免费实时源 akshare+baostock）。
+# 使用占位值保持相同效果；设为真实 token 则启用 Tushare 次级源。
 TUSHARE_TOKEN=your-tushare-pro-token-here
 
 SIGNALS_LLM_TIMEOUT_MS=900000
@@ -89,6 +89,7 @@ Tushare 接口权限见 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。
 
 web 服务挂载：
 
+- `./web/data/universe.json` → 容器内 `/app/data/universe.json`（股票池文件，UI 刷新直接写入宿主机 git 检出，跨容器重建持久化；`git pull` 更新即时生效）
 - `./private/holdings.local.json` → 容器内 `/app/data/holdings.local.json`
 - named volume `web-cache` → 容器内 `/app/.cache`（LLM 与回测 SQLite 缓存）
 
@@ -170,7 +171,7 @@ git commit -m "chore: refresh public snapshot"
 | 现象 | 检查 |
 |---|---|
 | 首页无行情 | `docker compose ps`；`curl http://127.0.0.1:8001/health`；确认 Web 的 `PYSERVER_URL` 指向 `http://pyserver:8001`。 |
-| pyserver 返回 mock 数据 | 检查根 `.env` 的 `TUSHARE_TOKEN` 是否仍为 `mock`；免费真实源可使用示例占位值覆盖镜像默认 mock。 |
+| pyserver 返回 mock 数据 | 检查根 `.env` 的 `TUSHARE_TOKEN` 是否被设为 `mock`；默认为空或占位值即使用免费实时源（akshare+baostock），`/health` 返回 `mock:false` 可确认。 |
 | 信号不可用 / 超时 | 检查 LLM key、`LLM_MODEL`、`SIGNALS_LLM_SCORE_BATCH_SIZE`、`SIGNALS_LLM_TIMEOUT_MS` 和 `docker compose logs web`。 |
 | 回测失败 / 超时 | 缩短日期范围；检查 `LLM_MODEL_BACKTEST`、`BACKTEST_LLM_TIMEOUT_MS`、`BACKTEST_LLM_SCORE_BATCH_SIZE`、`BACKTEST_SIGNAL_CONCURRENCY`。 |
 | 股票池刷新超时 | 增大 `UNIVERSE_REFRESH_LLM_TIMEOUT_MS`，确认模型支持长上下文和长时间 JSON 输出。 |

@@ -29,13 +29,14 @@ export function readUniverse(): UniverseFile {
 }
 
 export function writeUniverse(file: UniverseFile): void {
-  fs.writeFileSync(FILE, JSON.stringify(file, null, 2) + "\n", "utf-8");
+  // Atomic write: temp file + rename so concurrent readers (e.g. a page
+  // load during a UI refresh) never see a partially-written JSON.
+  const tmp = FILE + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", "utf-8");
+  fs.renameSync(tmp, FILE);
 }
 
 /** Convenience accessor for callers that only want the entries. */
 export function loadEntries(): UniverseEntry[] {
   return readUniverse().entries;
 }
-
-// Backwards-compat name used across the app.
-export const DEFAULT_UNIVERSE: UniverseEntry[] = loadEntries();
