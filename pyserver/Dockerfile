@@ -2,8 +2,9 @@ FROM python:3.13-slim
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
-COPY main.py mock_data.py ./
-ENV TUSHARE_TOKEN=mock
+COPY main.py mock_data.py cache.py validation.py ./
+# Empty token = free live sources (akshare/baostock); set "mock" only for demos/tests.
+ENV TUSHARE_TOKEN=""
 EXPOSE 8001
 # python:3.13-slim has no curl/wget; use stdlib urllib. docker-compose.yml
 # overrides this with the same check — keep both in sync.

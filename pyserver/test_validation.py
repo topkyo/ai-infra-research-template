@@ -10,9 +10,11 @@ import tempfile
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
+import cache as cache_mod
 import main
 
 
@@ -141,16 +143,39 @@ class EndpointValidationTest(unittest.TestCase):
         _assert_400(self, main.benchmark_klines, index="nope", start="20230101", end="20240101")
 
 
+class AnalystsBatchCapTest(unittest.TestCase):
+    """The /analysts batch endpoint caps at 50 symbols with a clear 400."""
+
+    def test_rejects_51_symbols(self) -> None:
+        symbols = ",".join(f"6005{i:02d}" for i in range(51))
+        with self.assertRaises(HTTPException) as ctx:
+            main.analysts(symbols=symbols)
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("最多 50", str(ctx.exception.detail))
+
+    def test_accepts_exactly_50_symbols(self) -> None:
+        # 50 valid unique symbols must pass the length gate; patch analyst()
+        # so the test does not depend on network/upstream availability.
+        # patch.object on the already-imported module: test_tushare_bootstrap
+        # pops "main" from sys.modules, so a string target like
+        # patch("main.analyst") could re-import a fresh module and miss.
+        symbols = ",".join(f"6005{i:02d}" for i in range(50))
+        with patch.object(main, "analyst", return_value={"symbol": "600500"}) as mock_analyst:
+            out = main.analysts(symbols=symbols)
+        self.assertEqual(mock_analyst.call_count, 50)
+        self.assertEqual(len(out), 50)
+
+
 class ValidationBeforeCacheTest(unittest.TestCase):
     """A rejected request must not write any cache key."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
-        self.old_path = main.DB_PATH
-        main.DB_PATH = Path(self.tmp.name) / "cache.db"
+        self.old_path = cache_mod.DB_PATH
+        cache_mod.DB_PATH = Path(self.tmp.name) / "cache.db"
 
     def tearDown(self) -> None:
-        main.DB_PATH = self.old_path
+        cache_mod.DB_PATH = self.old_path
         self.tmp.cleanup()
 
     def _row_count(self) -> int:

@@ -14,13 +14,11 @@ per symbol per trading day (klines/fundamentals/analyst) or per 30s (spot).
 from __future__ import annotations
 
 import io
-import json
 import logging
 import os
 import re
-import sqlite3
 import time
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -80,6 +78,25 @@ if STRICT_LIVE_DATA and MOCK_MODE:
 if MARKET_ENABLE_TUSHARE_SECONDARY and not HAS_TUSHARE_TOKEN:
     raise RuntimeError("MARKET_ENABLE_TUSHARE_SECONDARY=1 requires a real TUSHARE_TOKEN")
 CACHE_NAMESPACE = "mock" if MOCK_MODE else "live"
+# Cache lives in cache.py; importing it here (after .env is loaded) resolves
+# DB_PATH and runs _init_db() once. Names are re-exported so existing call
+# sites and tests keep working via main.DB_PATH / main.db / main.cache_*.
+import cache as cache_mod  # noqa: E402
+from cache import (  # noqa: E402
+    CACHE_MAX_ROWS,
+    DB_PATH,
+    SCHEMA,
+    _init_db,
+    cache_get,
+    cache_prune,
+    cache_put,
+    db,
+)
+
+# cache_get/cache_put read CACHE_NAMESPACE from cache.py's module globals at
+# call time, so mirror the mock/live choice into the cache module here.
+cache_mod.CACHE_NAMESPACE = CACHE_NAMESPACE
+
 from mock_data import BENCHMARKS  # noqa: E402
 if MOCK_MODE:
     from mock_data import (  # noqa: E402
@@ -95,8 +112,6 @@ elif MARKET_ENABLE_TUSHARE_SECONDARY:
 else:
     _pro = None
 
-DB_PATH = Path(os.environ.get("PYSERVER_CACHE_DB", Path(__file__).parent / "cache.db"))
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 NEGATIVE_CACHE = {"__negative_cache__": True}
 
 # Bypass broken shell proxies (e.g. 127.0.0.1:7890) for market quote HTTP clients.
@@ -132,114 +147,6 @@ def _requests_get_no_proxy(url: str, *, params: dict[str, Any], timeout: float) 
 
 
 app = FastAPI(title="topkyo pyserver", version="0.2.0")
-
-# ---------- cache ----------------------------------------------------------
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS cache (
-  key TEXT PRIMARY KEY,
-  payload TEXT NOT NULL,
-  fetched_at INTEGER NOT NULL,
-  ttl_seconds INTEGER NOT NULL
-);
-"""
-
-
-def _init_db() -> None:
-    # Switch to WAL once at startup. Changing journal mode needs an exclusive
-    # lock that the busy handler does not cover when other connections hold
-    # read locks, so doing it per-connection races under concurrent first hits.
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(SCHEMA)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-_init_db()
-
-
-@contextmanager
-def db():
-    # WAL lets readers proceed alongside the single writer, and busy_timeout
-    # makes concurrent writers wait instead of failing with "database is locked".
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    try:
-        conn.execute("PRAGMA busy_timeout=10000")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute(SCHEMA)
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
-
-
-CACHE_MAX_ROWS = int(os.environ.get("PYSERVER_CACHE_MAX_ROWS", "20000"))
-_PRUNE_INTERVAL_S = 600
-_last_prune_at = 0.0
-
-
-def cache_get(key: str) -> Any | None:
-    scoped_key = f"{CACHE_NAMESPACE}:{key}"
-    with db() as conn:
-        row = conn.execute(
-            "SELECT payload, fetched_at, ttl_seconds FROM cache WHERE key = ?",
-            (scoped_key,),
-        ).fetchone()
-        if row is None:
-            return None
-        payload, fetched_at, ttl = row
-        if ttl > 0 and time.time() - fetched_at > ttl:
-            # Delete expired rows eagerly so the cache does not grow stale
-            # entries. Conditional on fetched_at so a concurrent cache_put
-            # that just refreshed this key is not deleted.
-            conn.execute(
-                "DELETE FROM cache WHERE key = ? AND fetched_at = ?",
-                (scoped_key, fetched_at),
-            )
-            return None
-        return json.loads(payload)
-
-
-def cache_prune(max_rows: int = CACHE_MAX_ROWS) -> dict[str, int]:
-    """Delete expired rows, then evict oldest rows beyond `max_rows`."""
-    now = time.time()
-    with db() as conn:
-        expired = conn.execute(
-            "DELETE FROM cache WHERE ttl_seconds > 0 AND ? - fetched_at > ttl_seconds",
-            (now,),
-        ).rowcount
-        total = conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
-        evicted = 0
-        if total > max_rows:
-            evicted = conn.execute(
-                "DELETE FROM cache WHERE key IN ("
-                "  SELECT key FROM cache ORDER BY fetched_at ASC LIMIT ?"
-                ")",
-                (total - max_rows,),
-            ).rowcount
-    if expired or evicted:
-        log.info("cache_prune removed rows: expired=%d evicted=%d", expired, evicted)
-    return {"expired": expired, "evicted": evicted}
-
-
-def cache_put(key: str, value: Any, ttl_seconds: int) -> None:
-    global _last_prune_at
-    scoped_key = f"{CACHE_NAMESPACE}:{key}"
-    with db() as conn:
-        conn.execute(
-            "REPLACE INTO cache (key, payload, fetched_at, ttl_seconds) VALUES (?, ?, ?, ?)",
-            (scoped_key, json.dumps(value, ensure_ascii=False), int(time.time()), ttl_seconds),
-        )
-    now = time.monotonic()
-    if now - _last_prune_at > _PRUNE_INTERVAL_S:
-        _last_prune_at = now
-        try:
-            cache_prune()
-        except Exception:
-            log.exception("cache_prune failed")
 
 
 def seconds_until_next_trading_close() -> int:
@@ -484,65 +391,15 @@ def _to_ts_code(symbol: str) -> tuple[str, str]:
 
 # ---------- input validation whitelist -------------------------------------
 
-# Accepted symbol shapes (case-insensitive), mirroring the README 符号规则 table:
-#   sh600519 / sz000858 / bj830799, hk00700, bare 600519 (6 digits),
-#   bare 00700 (HK 5 digits), 600519.SH / 000858.SZ / 830799.BJ / 00700.HK.
-_SYMBOL_RE = re.compile(
-    r"(?:"
-    r"(?:sh|sz|bj)\d{6}"  # prefixed A-share
-    r"|hk\d{5}"  # prefixed HK
-    r"|\d{6}"  # bare A-share
-    r"|\d{5}"  # bare HK
-    r"|\d{6}\.(?:sh|sz|bj)"  # ts-code A-share
-    r"|\d{5}\.hk"  # ts-code HK
-    r")",
-    re.IGNORECASE,
+# Validators live in validation.py; re-exported here so existing call sites
+# and tests keep working via main._validate_symbol / main._validate_date.
+from validation import (  # noqa: E402
+    _DATE_MIN,
+    _SYMBOL_MAX_LEN,
+    _SYMBOL_RE,
+    _validate_date,
+    _validate_symbol,
 )
-# Longest valid symbol is "600519.SH" (9 chars); cap well above that so cache
-# keys can never be injected with overlong strings.
-_SYMBOL_MAX_LEN = 12
-
-_DATE_MIN = date(1990, 1, 1)
-
-
-def _validate_symbol(symbol: str) -> str:
-    """Whitelist-check a client symbol; return the stripped value.
-
-    Raises HTTPException(400) for empty, overlong, or non-conforming input so
-    cache keys and upstream calls only ever see known symbol shapes.
-    """
-    s = (symbol or "").strip()
-    if not s:
-        raise HTTPException(400, "invalid symbol: empty")
-    if len(s) > _SYMBOL_MAX_LEN:
-        raise HTTPException(400, f"invalid symbol: longer than {_SYMBOL_MAX_LEN} chars")
-    if not _SYMBOL_RE.fullmatch(s):
-        raise HTTPException(400, f"invalid symbol format: {s[:32]!r}")
-    return s
-
-
-def _validate_date(s: str, name: str) -> str:
-    """Validate a client date as YYYYMMDD or YYYY-MM-DD; return compact YYYYMMDD.
-
-    Must be a real calendar date within [1990-01-01, tomorrow].
-    Raises HTTPException(400) otherwise.
-    """
-    raw = (s or "").strip()
-    if re.fullmatch(r"\d{8}", raw):
-        compact = raw
-    elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
-        compact = raw.replace("-", "")
-    else:
-        raise HTTPException(400, f"invalid {name}: expected YYYYMMDD or YYYY-MM-DD")
-    try:
-        d = datetime.strptime(compact, "%Y%m%d").date()
-    except ValueError:
-        raise HTTPException(400, f"invalid {name}: not a real calendar date")
-    if d < _DATE_MIN:
-        raise HTTPException(400, f"invalid {name}: before {_DATE_MIN.isoformat()}")
-    if d > date.today() + timedelta(days=1):
-        raise HTTPException(400, f"invalid {name}: too far in the future")
-    return compact
 
 
 def _num_or_none(value: Any) -> float | None:
@@ -1460,9 +1317,15 @@ def analyst(symbol: str):
     return out
 
 
+# Batch cap for /analysts: each symbol triggers validation + upstream calls.
+_ANALYSTS_MAX_SYMBOLS = 50
+
+
 @app.get("/analysts", response_model=list[Analyst])
 def analysts(symbols: str = Query(..., description="comma-separated symbols")):
     uniq = [s.strip() for s in symbols.split(",") if s.strip()]
+    if len(uniq) > _ANALYSTS_MAX_SYMBOLS:
+        raise HTTPException(400, f"symbols 最多 {_ANALYSTS_MAX_SYMBOLS} 个")
     # A single invalid symbol rejects the whole batch with 400.
     for s in uniq:
         _validate_symbol(s)

@@ -1,6 +1,8 @@
 """Cache maintenance tests: WAL/busy-timeout, eager expiry delete, prune.
 
-No network. Each test points main.DB_PATH at a temp database.
+No network. Each test points the cache module's DB_PATH at a temp database
+(db() reads DB_PATH from cache.py's module globals, so the redirect must
+happen there; main.DB_PATH is only a re-exported copy).
 """
 from __future__ import annotations
 
@@ -8,17 +10,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import cache as cache_mod
 import main
 
 
 class CacheMaintenanceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
-        self.old_path = main.DB_PATH
-        main.DB_PATH = Path(self.tmp.name) / "cache.db"
+        self.old_path = cache_mod.DB_PATH
+        cache_mod.DB_PATH = Path(self.tmp.name) / "cache.db"
 
     def tearDown(self) -> None:
-        main.DB_PATH = self.old_path
+        cache_mod.DB_PATH = self.old_path
         self.tmp.cleanup()
 
     def _row_count(self) -> int:
