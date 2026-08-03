@@ -33,6 +33,10 @@ test("backtest runs to an equity curve with mock LLM", async ({ page }) => {
   // ~6-week window ending today.
   const today = new Date();
   const start = new Date(today.getTime() - 45 * 24 * 60 * 60 * 1000);
+  // Align start to the most recent weekday (mock klines skip weekends).
+  while (start.getDay() === 0 || start.getDay() === 6) {
+    start.setDate(start.getDate() - 1);
+  }
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   await page.goto("/backtest");
   await page.getByLabel("起始").fill(fmt(start));

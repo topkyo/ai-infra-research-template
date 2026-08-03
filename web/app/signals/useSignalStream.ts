@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readNdjsonStream } from "@/lib/ndjson";
 import type { UniverseEntry } from "@/lib/universe";
 
@@ -158,6 +158,15 @@ export function useSignalStream({ mode, paperCash }: UseSignalStreamOptions) {
       if (token === runTokenRef.current) setLoading(false);
     }
   }
+
+  // Abort any in-flight run when the component unmounts — prevents
+  // setState-after-unmount warnings and stops the network request.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      runTokenRef.current += 1;
+    };
+  }, []);
 
   return {
     rows,

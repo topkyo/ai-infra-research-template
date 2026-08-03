@@ -31,9 +31,18 @@ function safeEqual(a: string, b: string): boolean {
 const WEAK_REFRESH_TOKENS = new Set([
   "change-me-universe-refresh-token",
   "changeme",
+  "change-me",
   "password",
   "secret",
   "token",
+  "replace-me",
+  "your-token-here",
+  "placeholder",
+  "dummy",
+  "xxx",
+  "test",
+  "todo",
+  "unset",
 ]);
 
 export function refreshTokenConfigError(token: string): string | null {
