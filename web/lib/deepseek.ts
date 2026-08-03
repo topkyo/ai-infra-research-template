@@ -28,7 +28,7 @@ export interface ChatResult {
   cacheHit: boolean;
 }
 
-class LlmHttpError extends Error {
+export class LlmHttpError extends Error {
   constructor(
     public readonly provider: string,
     public readonly status: number,
@@ -43,11 +43,19 @@ function truncateErrorBody(body: string): string {
   return text.length > 500 ? `${text.slice(0, 500)}...` : text;
 }
 
-function isRetryableTransportError(error: unknown): boolean {
+export function isRetryableTransportError(error: unknown): boolean {
   if (error instanceof LlmHttpError) {
     return [408, 429, 500, 502, 503, 504].includes(error.status);
   }
-  return error instanceof TypeError;
+  if (error instanceof TypeError) {
+    // Only retry fetch network failures, not programming bugs: undici throws
+    // TypeError("fetch failed") and Node/undici network errors (ECONNRESET,
+    // ETIMEDOUT, UND_ERR_*) carry a string .code on error.cause.
+    if (error.message === "fetch failed") return true;
+    const cause = (error as { cause?: unknown }).cause;
+    return typeof (cause as { code?: unknown } | null | undefined)?.code === "string";
+  }
+  return false;
 }
 
 function extractMessageContent(message: Record<string, unknown> | undefined): string {
@@ -187,7 +195,7 @@ export interface SymbolSnapshot {
   };
 }
 
-export type SignalSource = "llm-live" | "llm-cache";
+export type SignalSource = "llm-live" | "llm-cache" | "llm-mock";
 
 export interface Signal {
   symbol: string;
@@ -513,8 +521,8 @@ async function scoreSymbolsBatchLlm(
   ];
   const model = opts.mode === "backtest" ? resolveLlmConfig().backtestModel : resolveLlmConfig().model;
   const timeoutMs = opts.mode === "backtest"
-    ? envPositiveNumber("BACKTEST_LLM_TIMEOUT_MS", 90_000)
-    : envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 90_000);
+    ? envPositiveNumber("BACKTEST_LLM_TIMEOUT_MS", 300_000)
+    : envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 900_000);
   let lastError: unknown;
   const configuredAttempts = opts.mode === "backtest"
     ? envPositiveInt("BACKTEST_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1))
@@ -604,7 +612,7 @@ async function scorePortfolioTargetsBatchLlm(
     { role: "user" as const, content: JSON.stringify(userPayload) },
   ];
   const cfg = resolveLlmConfig();
-  const timeoutMs = envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 90_000);
+  const timeoutMs = envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 900_000);
   let lastError: unknown;
   const configuredAttempts = envPositiveInt("SIGNALS_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1));
   const attempts = opts.bypassCache ? 1 : configuredAttempts;
@@ -657,7 +665,7 @@ function mockSignalFor(snapshot: SymbolSnapshot): Signal {
     confidence: 0.5,
     size: action === "buy" ? 0.5 : 0,
     rationale: `mock momentum ${(pct * 100).toFixed(1)}%`,
-    source: "llm-live",
+    source: "llm-mock",
   };
 }
 
@@ -671,7 +679,7 @@ function mockPortfolioTargetFor(snapshot: PortfolioScoringSnapshot): PortfolioTa
     evidence: [],
     risks: [],
     invalidation: "mock provider",
-    source: "llm-live",
+    source: "llm-mock",
   };
 }
 

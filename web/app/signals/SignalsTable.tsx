@@ -78,7 +78,13 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
                 <td className="num">{snapshot.fundamental?.pe_ttm?.toFixed(1) ?? "—"}</td>
                 <td className="num">{snapshot.fundamental?.profit_yoy != null ? `${snapshot.fundamental.profit_yoy.toFixed(1)}%` : "—"}</td>
                 <td className="num">{calcPeg(snapshot.fundamental?.pe_ttm, snapshot.fundamental?.profit_yoy)?.toFixed(2) ?? "—"}</td>
-                <td><span className={`badge ${recommendation.source ?? ""}`}>{recommendation.source ?? "—"}</span></td>
+                <td>
+                  {/* llm-mock is offline test output: warn styling (reuses the
+                      unscorable badge variant) so it never reads as live LLM. */}
+                  <span className={`badge ${recommendation.source === "llm-mock" ? "unscorable" : recommendation.source ?? ""}`}>
+                    {recommendation.source ?? "—"}
+                  </span>
+                </td>
                 <td className="muted signal-reason">
                   {[snapshot.fundamentalSource, formatFieldSources(snapshot.fundamentalFieldSources)]
                     .filter((part) => part && part !== "—")

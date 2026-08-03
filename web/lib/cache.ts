@@ -156,6 +156,11 @@ export async function cached<T>(
   return result.value;
 }
 
+// Concurrent same-key misses share one in-flight fetch instead of each
+// running the fetcher (duplicate upstream/LLM calls). Entries are removed
+// once the fetch settles, so failures are never cached or stuck.
+const inFlight = new Map<string, Promise<{ value: unknown; cacheHit: boolean }>>();
+
 export async function cachedWithMeta<T>(
   parts: unknown,
   ttlSeconds: number,
@@ -164,9 +169,19 @@ export async function cachedWithMeta<T>(
   const key = hashKey(parts);
   const hit = cacheGet<T>(key);
   if (hit !== null) return { value: hit, cacheHit: true };
-  const value = await fetcher();
-  cachePut(key, value, ttlSeconds);
-  return { value, cacheHit: false };
+  const pending = inFlight.get(key);
+  if (pending) return pending as Promise<{ value: T; cacheHit: boolean }>;
+  const promise = (async () => {
+    const value = await fetcher();
+    cachePut(key, value, ttlSeconds);
+    return { value, cacheHit: false };
+  })();
+  inFlight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlight.delete(key);
+  }
 }
 
 export interface StoredBacktestSummary {

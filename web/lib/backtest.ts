@@ -221,7 +221,7 @@ export async function runBacktest(
       },
     }));
   const signalsByDate: Record<string, Signal[]> = {};
-  const CONCURRENCY = envPositiveInt("BACKTEST_SIGNAL_CONCURRENCY", 1);
+  const CONCURRENCY = envPositiveInt("BACKTEST_SIGNAL_CONCURRENCY", 8);
   onProgress?.({ phase: "signals", done: 0, total: totalSignalUnits });
   for (let i = 0; i < rebalanceDates.length; i += CONCURRENCY) {
     const slice = rebalanceDates.slice(i, i + CONCURRENCY);
@@ -305,7 +305,8 @@ export async function runBacktest(
       if (px !== undefined) prices[symbols[j]] = px;
     }
 
-    // Rebalance day?
+    // Rebalance day? 信号与成交均使用当日收盘价（含首个调仓日 i=0），
+    // 日频回测不建模盘中路径。
     if (i % cfg.rebalanceEveryNDays === 0) {
       const signals = signalsByDate[date] ?? [];
 
@@ -412,38 +413,9 @@ export async function runBacktest(
     equityCurve.push({ date, equity, cash, positions });
   }
 
-  // Stats
+  // Stats — single implementation shared with the benchmark computation.
   const equities = equityCurve.map((b) => b.equity);
-  const start = equities[0];
-  const end = equities[equities.length - 1];
-  const totalReturnPct = (end / start - 1) * 100;
-  const years = equityCurve.length / 252;
-  const cagrPct = (Math.pow(end / start, 1 / Math.max(years, 1 / 252)) - 1) * 100;
-
-  let peak = start;
-  let maxDD = 0;
-  for (const e of equities) {
-    peak = Math.max(peak, e);
-    maxDD = Math.min(maxDD, e / peak - 1);
-  }
-
-  const rets: number[] = [];
-  for (let i = 1; i < equities.length; i++) {
-    rets.push(equities[i] / equities[i - 1] - 1);
-  }
-  const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
-  const variance =
-    rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length || 1);
-  const std = Math.sqrt(variance);
-  const sharpe = std > 0 ? (mean / std) * Math.sqrt(252) : 0;
-
-  const stats: BacktestResult["stats"] = {
-    totalReturnPct,
-    cagrPct,
-    maxDrawdownPct: maxDD * 100,
-    sharpe,
-    trades: trades.length,
-  };
+  const stats: BacktestResult["stats"] = computeStatsFromEquities(equities, trades.length);
 
   let benchmark: BenchmarkResult | undefined;
   if (opts.benchmark) {
@@ -452,12 +424,12 @@ export async function runBacktest(
       opts.benchmark.klines,
       cfg.startCash,
       { id: opts.benchmark.id, name: opts.benchmark.name },
-      totalReturnPct,
+      stats.totalReturnPct,
     );
     if (bench) {
       benchmark = bench;
       stats.excessReturnPct = bench.stats.totalReturnPct != null
-        ? totalReturnPct - bench.stats.totalReturnPct
+        ? stats.totalReturnPct - bench.stats.totalReturnPct
         : undefined;
     }
   }

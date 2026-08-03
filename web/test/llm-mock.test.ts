@@ -18,6 +18,8 @@ test("mock provider returns deterministic offline signals without network", asyn
     assert.deepEqual(signals.map((s) => s.action), ["buy", "sell", "hold"]);
     assert.ok(signals[0].size > 0);
     assert.equal(signals[1].size, 0);
+    // Mock output must be distinguishable from real LLM output downstream.
+    assert.ok(signals.every((s) => s.source === "llm-mock"));
 
     // Deterministic: same input, same output.
     const again = await scoreSymbols([snap("AAA", UP)]);
@@ -27,6 +29,7 @@ test("mock provider returns deterministic offline signals without network", asyn
     const targets = await scorePortfolioTargets([snap("AAA", UP), snap("BBB", DOWN)]);
     assert.ok(targets[0].targetWeight > 0);
     assert.equal(targets[1].targetWeight, 0);
+    assert.ok(targets.every((t) => t.source === "llm-mock"));
 
     // Code paths without a mock implementation fail explicitly (no silent
     // degradation): chat/universe-refresh style calls must throw.

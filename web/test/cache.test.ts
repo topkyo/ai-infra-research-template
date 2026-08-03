@@ -107,6 +107,42 @@ test("cached() calls fetcher only on miss", async () => {
   assert.equal(calls, 1);
 });
 
+test("cachedWithMeta dedupes concurrent in-flight misses for the same key", async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls++;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return { v: calls };
+  };
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () => cachedWithMeta(["k-inflight", 1], 60, fetcher)),
+  );
+  assert.equal(calls, 1);
+  for (const r of results) {
+    assert.deepEqual(r, { value: { v: 1 }, cacheHit: false });
+  }
+});
+
+test("cachedWithMeta propagates fetcher errors to all awaiters and clears the in-flight entry", async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls++;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    throw new Error(`boom-${calls}`);
+  };
+  const results = await Promise.allSettled(
+    Array.from({ length: 3 }, () => cachedWithMeta(["k-inflight-err", 1], 60, fetcher)),
+  );
+  assert.equal(calls, 1);
+  for (const r of results) {
+    assert.equal(r.status, "rejected");
+    assert.match((r as PromiseRejectedResult).reason.message, /boom-1/);
+  }
+  // The failed attempt must not wedge the key: a retry runs the fetcher again.
+  await assert.rejects(() => cachedWithMeta(["k-inflight-err", 1], 60, fetcher), /boom-2/);
+  assert.equal(calls, 2);
+});
+
 test("cachedWithMeta reports cache hits", async () => {
   let calls = 0;
   const fetcher = async () => {

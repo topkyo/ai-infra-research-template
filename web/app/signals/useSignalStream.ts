@@ -53,7 +53,7 @@ export interface SignalRow {
     evidence: string[];
     risks: string[];
     invalidation: string;
-    source?: "llm-live" | "llm-cache";
+    source?: "llm-live" | "llm-cache" | "llm-mock";
     dataQuality?: string[];
     constraintWarnings: string[];
   };

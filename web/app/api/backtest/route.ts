@@ -6,8 +6,8 @@ import { mapPool } from "@/lib/concurrent";
 import { saveBacktestResult } from "@/lib/cache";
 import { resolveLlmConfig } from "@/lib/llm/config";
 
-const LOAD_CONCURRENCY = Number(process.env.BACKTEST_LOAD_CONCURRENCY ?? 6);
-const BACKTEST_PYSERVER_TIMEOUT_MS = Number(process.env.BACKTEST_PYSERVER_TIMEOUT_MS ?? 20_000);
+const LOAD_CONCURRENCY = Number(process.env.BACKTEST_LOAD_CONCURRENCY ?? 10);
+const BACKTEST_PYSERVER_TIMEOUT_MS = Number(process.env.BACKTEST_PYSERVER_TIMEOUT_MS ?? 60_000);
 
 export const runtime = "nodejs";
 // Long backtests (77 symbols × many rebalance dates × LLM batches) need >5m locally.
