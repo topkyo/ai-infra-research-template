@@ -11,7 +11,7 @@
 | LLM key | `OPENCODE_GO_API_KEY` 或 `DEEPSEEK_API_KEY`。 |
 | 市场数据 | 默认免费真实数据无需 Tushare；Tushare 只作为显式次级源。 |
 
-CI 和 Dockerfile 当前使用 Node 22，本地 `.nvmrc` 为 Node 24.5.0。两者都能运行，但不要混用同一份 `node_modules`；切换 Node 主版本后执行 `cd web && npm install` 或 `./scripts/rebuild-native-modules.sh`。
+CI 使用 Node 24，Dockerfile 使用 `node:24-slim`，与 `package.json` engines 要求的 Node 24.5.0 一致（本地 `.nvmrc` 同为 24.5.0）。不要混用同一份 `node_modules`；切换 Node 主版本后执行 `cd web && npm install` 或 `./scripts/rebuild-native-modules.sh`。
 
 ## 环境文件
 
@@ -112,13 +112,14 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 | `BACKTEST_SIGNAL_CONCURRENCY` | `8` | 并行处理的调仓日数量。 |
 | `BACKTEST_LLM_TIMEOUT_MS` | `300000` | 回测单批 LLM 超时。 |
 | `BACKTEST_LLM_MAX_ATTEMPTS` | `2` | 回测单批技术重试次数。 |
-| `BACKTEST_LOAD_CONCURRENCY` | `6` | 回测加载 K 线/基本面的并发数。 |
-| `BACKTEST_PYSERVER_TIMEOUT_MS` | `20000` | 回测单只 K 线请求超时。 |
+| `BACKTEST_LOAD_CONCURRENCY` | `10` | 回测加载 K 线/基本面的并发数。 |
+| `BACKTEST_PYSERVER_TIMEOUT_MS` | `60000` | 回测单只 K 线请求超时。 |
 | `BACKTEST_SLIPPAGE_BPS` | `0` | 回测单边滑点（bps），请求体 `slippageBps` 优先；页面默认填 5。 |
 | `BACKTEST_RESPECT_PRICE_LIMITS` | `1` | 回测涨跌停限制（涨停不可买/跌停不可卖，按板块 10%/20%/30%），`0` 关闭；请求体 `respectPriceLimits` 优先。 |
 | `LLM_SCORE_BATCH_SIZE` | `10` | `scoreSymbols` 其他调用方默认批大小。 |
 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` | `900000` | 股票池刷新提议阶段 LLM 超时。 |
 | `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新新增标的 pyserver 校验超时。 |
+| `UNIVERSE_REFRESH_ENABLED` | 本地 `1` / compose `0` | 设为 `0` 时 `/api/universe/refresh` 显式报错且首页刷新按钮禁用；生产只读股票池，刷新只在本地进行，审查后提交部署。 |
 
 批大小越小越稳，但总耗时更长。信号和回测失败时优先检查 key、模型、批大小、超时和 pyserver 可用性。
 

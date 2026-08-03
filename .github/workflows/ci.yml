@@ -121,3 +121,19 @@ jobs:
       - name: Run e2e
         working-directory: web
         run: npm run test:e2e
+
+  # ----------------------------------------------------------------------
+  # Docker image builds: validates the production build path (incl.
+  # better-sqlite3 native module on the slim image) for both services.
+  # ----------------------------------------------------------------------
+  docker:
+    name: docker (image builds)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build pyserver image
+        run: docker build -t topkyo-pyserver-ci ./pyserver
+
+      - name: Build web image
+        run: docker build -t topkyo-web-ci ./web

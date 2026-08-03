@@ -12,7 +12,7 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
-      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-mock}
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
       PYSERVER_CACHE_DB: /app/cache-data/cache.db
     volumes:
       - pyserver-cache:/app/cache-data
@@ -60,12 +60,14 @@ services:
       BACKTEST_PYSERVER_TIMEOUT_MS: ${BACKTEST_PYSERVER_TIMEOUT_MS:-60000}
       UNIVERSE_REFRESH_LLM_TIMEOUT_MS: ${UNIVERSE_REFRESH_LLM_TIMEOUT_MS:-900000}
       UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS: ${UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS:-20000}
+      # 生产部署只读股票池:刷新只在本地进行,审查后提交部署;设为 1 允许 UI 刷新
+      UNIVERSE_REFRESH_ENABLED: "0"
       PYSERVER_URL: http://pyserver:8001
     depends_on:
       pyserver:
         condition: service_healthy
     healthcheck:
-      # node:22-slim has no curl/wget; Node 22 ships global fetch.
+      # node:24-slim has no curl/wget; Node 24 ships global fetch.
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
