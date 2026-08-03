@@ -61,3 +61,31 @@ test("mock provider still enforces input validation", async () => {
     else process.env.LLM_PROVIDER = old;
   }
 });
+
+test("mock provider is blocked in production unless ALLOW_MOCK_LLM=1", async () => {
+  const oldProvider = process.env.LLM_PROVIDER;
+  const oldNodeEnv = process.env.NODE_ENV;
+  const oldAllow = process.env.ALLOW_MOCK_LLM;
+  const setNodeEnv = (value: string | undefined) => {
+    // ProcessEnv types NODE_ENV as readonly; runtime assignment is fine in tests.
+    (process.env as { NODE_ENV?: string }).NODE_ENV = value;
+  };
+  process.env.LLM_PROVIDER = "mock";
+  setNodeEnv("production");
+  delete process.env.ALLOW_MOCK_LLM;
+  try {
+    await assert.rejects(
+      () => scoreSymbols([snap("AAA", UP)]),
+      /blocked in production/,
+    );
+    process.env.ALLOW_MOCK_LLM = "1";
+    const signals = await scoreSymbols([snap("AAA", UP)]);
+    assert.equal(signals[0].source, "llm-mock");
+  } finally {
+    if (oldProvider === undefined) delete process.env.LLM_PROVIDER;
+    else process.env.LLM_PROVIDER = oldProvider;
+    setNodeEnv(oldNodeEnv);
+    if (oldAllow === undefined) delete process.env.ALLOW_MOCK_LLM;
+    else process.env.ALLOW_MOCK_LLM = oldAllow;
+  }
+});

@@ -119,7 +119,8 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 | `LLM_SCORE_BATCH_SIZE` | `10` | `scoreSymbols` 其他调用方默认批大小。 |
 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` | `900000` | 股票池刷新提议阶段 LLM 超时。 |
 | `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新新增标的 pyserver 校验超时。 |
-| `UNIVERSE_REFRESH_ENABLED` | `1` | 设为 `0` 时 `/api/universe/refresh` 显式报错且首页刷新按钮禁用（冻结场景）。默认启用：compose 将 `universe.json` bind-mount 到宿主机 git 检出，UI 刷新直接写入宿主机文件，跨容器重建持久化；`git pull` 更新即时生效。**注意**：VPS 上 UI 刷新后 `web/data/universe.json` 会有未提交改动，若远端也改了该文件，`git pull --ff-only` 会报冲突——此时 `git stash` 暂存或 `git checkout -- web/data/universe.json` 丢弃后重新 pull。 |
+| `UNIVERSE_REFRESH_ENABLED` | `1` | 设为 `0` 时 `/api/universe/refresh` 显式报错且首页刷新按钮禁用（冻结场景）。默认启用：compose 将 `./web/data` 目录 bind-mount 到容器，UI 刷新以原子 tmp+rename 写入宿主机文件。**注意**：UI 刷新后 `web/data/universe.json` 可能有未提交改动，远端若也改了该文件，`git pull --ff-only` 会冲突——`git stash` 或丢弃本地后再 pull。 |
+| `UNIVERSE_REFRESH_TOKEN` | （必填） | 启用刷新时必填的共享密钥。请求须带 `x-universe-refresh-token` 或 `Authorization: Bearer`；未配置或错误时接口显式报错，不调用 LLM。首页需粘贴同一令牌（存 sessionStorage）。 |
 
 批大小越小越稳，但总耗时更长。信号和回测失败时优先检查 key、模型、批大小、超时和 pyserver 可用性。
 

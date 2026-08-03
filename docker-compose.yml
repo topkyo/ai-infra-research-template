@@ -37,9 +37,11 @@ services:
         max-size: "10m"
         max-file: "3"
     volumes:
-      # Bind-mount universe.json to the host git checkout so UI refreshes
-      # persist across container rebuilds and git pull updates are live.
-      - ./web/data/universe.json:/app/data/universe.json
+      # Mount the whole data dir so atomic tmp+rename writes (universe.json,
+      # and any future siblings) update the host inode. Single-file binds
+      # break rename and can leave the host checkout stale.
+      - ./web/data:/app/data
+      # Overlay private holdings on top of the data dir mount.
       - ./private/holdings.local.json:/app/data/holdings.local.json
       - web-cache:/app/.cache
     environment:
@@ -63,9 +65,10 @@ services:
       BACKTEST_PYSERVER_TIMEOUT_MS: ${BACKTEST_PYSERVER_TIMEOUT_MS:-60000}
       UNIVERSE_REFRESH_LLM_TIMEOUT_MS: ${UNIVERSE_REFRESH_LLM_TIMEOUT_MS:-900000}
       UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS: ${UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS:-20000}
-      # universe.json bind-mounted to host git checkout: UI 刷新持久化,
-      # git pull 即时生效。设为 0 可临时冻结股票池(如演示场景)。
+      # data/ bind-mounted: UI 刷新持久化到宿主机。设为 0 可临时冻结。
+      # Refresh also requires UNIVERSE_REFRESH_TOKEN (app-layer auth).
       UNIVERSE_REFRESH_ENABLED: ${UNIVERSE_REFRESH_ENABLED:-1}
+      UNIVERSE_REFRESH_TOKEN: ${UNIVERSE_REFRESH_TOKEN:-}
       PYSERVER_URL: http://pyserver:8001
     depends_on:
       pyserver:

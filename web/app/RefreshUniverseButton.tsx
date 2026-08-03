@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readNdjsonStream } from "@/lib/ndjson";
+
+const TOKEN_STORAGE_KEY = "topkyo.universeRefreshToken";
 
 interface RefreshResult {
   proposal: { rationale: string };
@@ -14,13 +16,29 @@ interface RefreshResult {
   finalCount: number;
 }
 
-export default function RefreshUniverseButton({ disabled = false }: { disabled?: boolean }) {
+export default function RefreshUniverseButton({
+  disabled = false,
+  tokenConfigured = true,
+}: {
+  disabled?: boolean;
+  /** Server knows UNIVERSE_REFRESH_TOKEN is set; UI still needs the operator to paste it. */
+  tokenConfigured?: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [token, setToken] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [result, setResult] = useState<RefreshResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setToken(sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+    } catch {
+      // sessionStorage may be unavailable; operator can still paste per click.
+    }
+  }, []);
 
   async function run() {
     setBusy(true);
@@ -28,8 +46,22 @@ export default function RefreshUniverseButton({ disabled = false }: { disabled?:
     setProgress(null);
     setResult(null);
     setError(null);
+    const trimmed = token.trim();
+    if (!trimmed) {
+      setError("请填写与环境变量 UNIVERSE_REFRESH_TOKEN 相同的刷新令牌");
+      setBusy(false);
+      return;
+    }
     try {
-      const r = await fetch("/api/universe/refresh", { method: "POST" });
+      try {
+        sessionStorage.setItem(TOKEN_STORAGE_KEY, trimmed);
+      } catch {
+        // ignore quota / private-mode failures
+      }
+      const r = await fetch("/api/universe/refresh", {
+        method: "POST",
+        headers: { "x-universe-refresh-token": trimmed },
+      });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
       let changed = false;
       type Evt =
@@ -64,6 +96,20 @@ export default function RefreshUniverseButton({ disabled = false }: { disabled?:
 
   return (
     <div>
+      {!disabled && (
+        <label className="toolbar-status" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 8 }}>
+          <span>刷新令牌</span>
+          <input
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="UNIVERSE_REFRESH_TOKEN"
+            disabled={busy}
+            style={{ width: 180 }}
+          />
+        </label>
+      )}
       <button
         onClick={run}
         disabled={busy || disabled}
@@ -73,6 +119,9 @@ export default function RefreshUniverseButton({ disabled = false }: { disabled?:
       </button>
       {disabled && (
         <span className="toolbar-status">只读部署：股票池刷新请在本地进行并提交</span>
+      )}
+      {!disabled && !tokenConfigured && (
+        <span className="toolbar-status">服务端未配置 UNIVERSE_REFRESH_TOKEN，刷新会被拒绝</span>
       )}
 
       {(busy || logs.length > 0 || result || error) && (

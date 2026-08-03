@@ -402,7 +402,7 @@ test("scoreSymbols does not fall back to rule-driven trading when the LLM is una
 });
 
 test("isRetryableTransportError retries HTTP 5xx and fetch network failures only", async () => {
-  const { isRetryableTransportError, LlmHttpError } = await import("../lib/deepseek");
+  const { isRetryableTransportError, LlmHttpError, retryDelayMs } = await import("../lib/deepseek");
   // Transient provider statuses stay retryable.
   assert.equal(isRetryableTransportError(new LlmHttpError("deepseek", 502, "bad gateway")), true);
   assert.equal(isRetryableTransportError(new LlmHttpError("deepseek", 400, "bad request")), false);
@@ -410,9 +410,16 @@ test("isRetryableTransportError retries HTTP 5xx and fetch network failures only
   assert.equal(isRetryableTransportError(new TypeError("fetch failed")), true);
   const withCause = new TypeError("terminated", { cause: { code: "ECONNRESET" } });
   assert.equal(isRetryableTransportError(withCause), true);
-  // Programming bugs must not be retried.
+  // Programming / config bugs must not be retried.
   assert.equal(isRetryableTransportError(new TypeError("Cannot read properties of undefined")), false);
+  assert.equal(
+    isRetryableTransportError(new TypeError("failed", { cause: { code: "ERR_INVALID_URL" } })),
+    false,
+  );
   assert.equal(isRetryableTransportError(new Error("boom")), false);
+  // Retry-After (seconds) is honored and capped.
+  assert.equal(retryDelayMs(0, "2"), 2000);
+  assert.equal(retryDelayMs(0, "120"), 60_000);
 });
 
 test("scoreSymbols uses a shorter timeout for backtest mode", async () => {

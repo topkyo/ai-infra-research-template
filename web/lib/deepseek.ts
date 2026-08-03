@@ -43,19 +43,49 @@ function truncateErrorBody(body: string): string {
   return text.length > 500 ? `${text.slice(0, 500)}...` : text;
 }
 
+/** Network / undici codes worth a transport retry. Config bugs (e.g. ERR_INVALID_URL) stay out. */
+const RETRYABLE_CAUSE_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CLOSED",
+]);
+
 export function isRetryableTransportError(error: unknown): boolean {
   if (error instanceof LlmHttpError) {
     return [408, 429, 500, 502, 503, 504].includes(error.status);
   }
   if (error instanceof TypeError) {
-    // Only retry fetch network failures, not programming bugs: undici throws
-    // TypeError("fetch failed") and Node/undici network errors (ECONNRESET,
-    // ETIMEDOUT, UND_ERR_*) carry a string .code on error.cause.
+    // undici: TypeError("fetch failed") for many network failures.
     if (error.message === "fetch failed") return true;
     const cause = (error as { cause?: unknown }).cause;
-    return typeof (cause as { code?: unknown } | null | undefined)?.code === "string";
+    const code = (cause as { code?: unknown } | null | undefined)?.code;
+    if (typeof code !== "string") return false;
+    return RETRYABLE_CAUSE_CODES.has(code) || code.startsWith("UND_ERR_");
   }
   return false;
+}
+
+/** Backoff for transport retries: honor Retry-After when present, else linear + jitter. */
+export function retryDelayMs(attempt: number, retryAfterHeader: string | null | undefined): number {
+  if (retryAfterHeader) {
+    const sec = Number(retryAfterHeader);
+    if (Number.isFinite(sec) && sec >= 0) return Math.min(sec * 1000, 60_000);
+    const dateMs = Date.parse(retryAfterHeader);
+    if (!Number.isNaN(dateMs)) return Math.min(Math.max(dateMs - Date.now(), 0), 60_000);
+  }
+  const base = 750 * (attempt + 1);
+  const jitter = Math.floor(Math.random() * 250);
+  return base + jitter;
 }
 
 function extractMessageContent(message: Record<string, unknown> | undefined): string {
@@ -118,9 +148,8 @@ export async function chatDetailed(
     for (let attempt = 0; attempt < transportMaxAttempts; attempt++) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), llmTimeoutMs);
-      let r: Response;
       try {
-        r = await fetch(cfg.chatCompletionsUrl, {
+        const r = await fetch(cfg.chatCompletionsUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -129,35 +158,41 @@ export async function chatDetailed(
           body: JSON.stringify(body),
           signal: ctrl.signal,
         });
+        if (!r.ok) {
+          const retryAfter = r.headers.get("retry-after");
+          lastError = new LlmHttpError(cfg.provider, r.status, truncateErrorBody(await r.text()));
+          if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(lastError)) {
+            // Clear before sleeping so the abort timer cannot fire mid-backoff.
+            clearTimeout(timer);
+            await sleep(retryDelayMs(attempt, retryAfter));
+            continue;
+          }
+          break;
+        }
+        // Keep the abort timer armed through body read — a stalled stream
+        // should not hang past llmTimeoutMs (and in-flight cache joiners).
+        const j = (await r.json()) as {
+          choices?: { message?: Record<string, unknown> }[];
+        };
+        const content = extractMessageContent(j.choices?.[0]?.message);
+        if (!content.trim()) {
+          throw new Error(`${cfg.provider} returned empty content`);
+        }
+        return content;
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") {
           throw new Error(`${cfg.provider} timed out after ${llmTimeoutMs}ms`);
         }
         lastError = e;
         if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(e)) {
-          await sleep(750 * (attempt + 1));
+          clearTimeout(timer);
+          await sleep(retryDelayMs(attempt, null));
           continue;
         }
         break;
       } finally {
         clearTimeout(timer);
       }
-      if (!r.ok) {
-        lastError = new LlmHttpError(cfg.provider, r.status, truncateErrorBody(await r.text()));
-        if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(lastError)) {
-          await sleep(750 * (attempt + 1));
-          continue;
-        }
-        break;
-      }
-      const j = (await r.json()) as {
-        choices?: { message?: Record<string, unknown> }[];
-      };
-      const content = extractMessageContent(j.choices?.[0]?.message);
-      if (!content.trim()) {
-        throw new Error(`${cfg.provider} returned empty content`);
-      }
-      return content;
     }
     if (transportMaxAttempts > 1 && isRetryableTransportError(lastError)) {
       const message = lastError instanceof Error ? lastError.message : String(lastError);
@@ -684,11 +719,14 @@ function mockPortfolioTargetFor(snapshot: PortfolioScoringSnapshot): PortfolioTa
 }
 
 function mockProviderActive(): boolean {
-  const active = resolveLlmConfig().provider === "mock";
-  if (active) {
-    console.warn("[llm] LLM_PROVIDER=mock: deterministic offline signals (test/e2e only)");
+  if (resolveLlmConfig().provider !== "mock") return false;
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_MOCK_LLM !== "1") {
+    throw new Error(
+      "LLM_PROVIDER=mock is blocked in production; set ALLOW_MOCK_LLM=1 to override (test/e2e only)",
+    );
   }
-  return active;
+  console.warn("[llm] LLM_PROVIDER=mock: deterministic offline signals (test/e2e only)");
+  return true;
 }
 
 export async function scorePortfolioTargets(

@@ -146,9 +146,13 @@ test("/api/universe/refresh emits terminal error and leaves file unchanged when 
   const restore = installStrictFailureFetch();
   process.env.LLM_PROVIDER = "deepseek";
   process.env.DEEPSEEK_API_KEY = "sk-test";
+  process.env.UNIVERSE_REFRESH_TOKEN = "test-refresh-token";
   try {
     const { POST } = await import("../app/api/universe/refresh/route");
-    const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", { method: "POST" })));
+    const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {
+      method: "POST",
+      headers: { "x-universe-refresh-token": "test-refresh-token" },
+    })));
     const terminal = events.at(-1);
     assert.equal(terminal?.type, "error");
     assert.match(String(terminal?.message), /deepseek 502/);
@@ -157,15 +161,20 @@ test("/api/universe/refresh emits terminal error and leaves file unchanged when 
     restore();
     delete process.env.LLM_PROVIDER;
     delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.UNIVERSE_REFRESH_TOKEN;
   }
 });
 
 test("/api/universe/refresh refuses explicitly on read-only deployments", async () => {
   const before = fs.readFileSync("data/universe.json", "utf-8");
   process.env.UNIVERSE_REFRESH_ENABLED = "0";
+  process.env.UNIVERSE_REFRESH_TOKEN = "test-refresh-token";
   try {
     const { POST } = await import("../app/api/universe/refresh/route");
-    const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", { method: "POST" })));
+    const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {
+      method: "POST",
+      headers: { "x-universe-refresh-token": "test-refresh-token" },
+    })));
     const terminal = events.at(-1);
     assert.equal(terminal?.type, "error");
     assert.match(String(terminal?.message), /只读股票池/);
@@ -174,5 +183,28 @@ test("/api/universe/refresh refuses explicitly on read-only deployments", async 
     assert.equal(fs.readFileSync("data/universe.json", "utf-8"), before);
   } finally {
     delete process.env.UNIVERSE_REFRESH_ENABLED;
+    delete process.env.UNIVERSE_REFRESH_TOKEN;
+  }
+});
+
+test("/api/universe/refresh refuses when refresh token is missing or wrong", async () => {
+  const before = fs.readFileSync("data/universe.json", "utf-8");
+  delete process.env.UNIVERSE_REFRESH_TOKEN;
+  try {
+    const { POST } = await import("../app/api/universe/refresh/route");
+    const noToken = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", { method: "POST" })));
+    assert.equal(noToken.at(-1)?.type, "error");
+    assert.match(String(noToken.at(-1)?.message), /未配置 UNIVERSE_REFRESH_TOKEN/);
+
+    process.env.UNIVERSE_REFRESH_TOKEN = "expected-token";
+    const wrong = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {
+      method: "POST",
+      headers: { "x-universe-refresh-token": "wrong" },
+    })));
+    assert.equal(wrong.at(-1)?.type, "error");
+    assert.match(String(wrong.at(-1)?.message), /刷新令牌无效/);
+    assert.equal(fs.readFileSync("data/universe.json", "utf-8"), before);
+  } finally {
+    delete process.env.UNIVERSE_REFRESH_TOKEN;
   }
 });

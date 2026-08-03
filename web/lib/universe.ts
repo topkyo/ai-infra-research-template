@@ -29,8 +29,10 @@ export function readUniverse(): UniverseFile {
 }
 
 export function writeUniverse(file: UniverseFile): void {
-  // Atomic write: temp file + rename so concurrent readers (e.g. a page
-  // load during a UI refresh) never see a partially-written JSON.
+  // Atomic write: temp file + rename so concurrent readers never see a
+  // partially-written JSON. Requires a directory bind-mount for Docker
+  // (compose mounts ./web/data → /app/data); a single-file bind of
+  // universe.json makes rename fail or detach from the host inode.
   const tmp = FILE + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", "utf-8");
   fs.renameSync(tmp, FILE);

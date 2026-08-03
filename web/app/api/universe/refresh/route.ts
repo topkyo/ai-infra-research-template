@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { readUniverse } from "@/lib/universe";
 import { proposeRefresh, applyRefresh } from "@/lib/universe-refresh";
+import { refreshAuthError } from "@/lib/universe-refresh-auth";
 
 export const runtime = "nodejs";
 // proposeRefresh is one full-universe LLM call (same order of magnitude as /api/signals).
 export const maxDuration = 900;
 
 // NDJSON: progress / log / result / error
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -18,12 +19,18 @@ export async function POST(_req: NextRequest) {
         // Frozen deployments (UNIVERSE_REFRESH_ENABLED=0, e.g. demos):
         // fail explicitly instead of silently accepting a refresh the caller
         // did not intend. Default is enabled — compose bind-mounts
-        // universe.json to the host git checkout so writes persist.
+        // data/ to the host git checkout so writes persist.
         if (process.env.UNIVERSE_REFRESH_ENABLED === "0") {
           send({
             type: "error",
             message: "当前部署为只读股票池：请在本地运行 cd web && npx tsx scripts/refresh-universe.ts，审查 diff 后提交部署",
           });
+          controller.close();
+          return;
+        }
+        const authError = refreshAuthError(req);
+        if (authError) {
+          send({ type: "error", message: authError });
           controller.close();
           return;
         }

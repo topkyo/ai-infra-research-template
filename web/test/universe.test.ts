@@ -68,3 +68,17 @@ test("writeUniverse round-trips", () => {
   assert.equal(reloaded.updated_by, "round-trip-test");
   assert.equal(reloaded.entries.at(-1)!.symbol, "002463");
 });
+
+test("writeUniverse uses atomic tmp+rename and leaves no .tmp behind", () => {
+  const target = path.join(process.cwd(), "data", "universe.json");
+  const tmp = target + ".tmp";
+  const beforeStat = fs.statSync(target);
+  const u = readUniverse();
+  u.updated_by = "atomic-write-test";
+  writeUniverse(u);
+  assert.equal(fs.existsSync(tmp), false);
+  const afterStat = fs.statSync(target);
+  // rename replaces the directory entry; inode may change on the same filesystem.
+  assert.equal(readUniverse().updated_by, "atomic-write-test");
+  assert.ok(afterStat.mtimeMs >= beforeStat.mtimeMs);
+});
