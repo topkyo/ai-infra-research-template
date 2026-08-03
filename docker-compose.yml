@@ -37,14 +37,14 @@ services:
         max-size: "10m"
         max-file: "3"
     volumes:
-      # Mount the whole data dir so atomic tmp+rename writes (universe.json,
-      # and any future siblings) update the host inode. Single-file binds
-      # break rename and can leave the host checkout stale.
+      # Directory mounts so atomic tmp+rename updates the host inode.
+      # Single-file binds break rename (EBUSY / stale host file).
       - ./web/data:/app/data
-      # Overlay private holdings on top of the data dir mount.
-      - ./private/holdings.local.json:/app/data/holdings.local.json
+      - ./private:/app/private
       - web-cache:/app/.cache
     environment:
+      # Writable dir mount (not a single-file bind) for holdings atomic writes.
+      HOLDINGS_FILE: /app/private/holdings.local.json
       LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}

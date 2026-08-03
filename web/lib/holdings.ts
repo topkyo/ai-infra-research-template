@@ -26,8 +26,12 @@ export interface LoadedHoldings {
   warnings: string[];
 }
 
-export const HOLDINGS_FILE = path.join(process.cwd(), "data", "holdings.local.json");
-const HOLDINGS_FILE_DISPLAY = "web/data/holdings.local.json";
+// Override for Docker: compose mounts ./private → /app/private and sets
+// HOLDINGS_FILE so atomic tmp+rename works (single-file binds break rename).
+export const HOLDINGS_FILE = (process.env.HOLDINGS_FILE?.trim()
+  || path.join(process.cwd(), "data", "holdings.local.json"));
+const HOLDINGS_FILE_DISPLAY = process.env.HOLDINGS_FILE?.trim()
+  || "web/data/holdings.local.json";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

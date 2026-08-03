@@ -34,7 +34,16 @@ test("refreshAuthError requires configured token and matching header", () => {
       /未配置 UNIVERSE_REFRESH_TOKEN/,
     );
 
-    process.env.UNIVERSE_REFRESH_TOKEN = "correct";
+    process.env.UNIVERSE_REFRESH_TOKEN = "change-me-universe-refresh-token";
+    assert.match(
+      refreshAuthError(new NextRequest("http://test/", {
+        method: "POST",
+        headers: { "x-universe-refresh-token": "change-me-universe-refresh-token" },
+      })) ?? "",
+      /过弱或仍为示例值/,
+    );
+
+    process.env.UNIVERSE_REFRESH_TOKEN = "correct-token-16";
     assert.match(
       refreshAuthError(new NextRequest("http://test/", {
         method: "POST",
@@ -45,7 +54,7 @@ test("refreshAuthError requires configured token and matching header", () => {
     assert.equal(
       refreshAuthError(new NextRequest("http://test/", {
         method: "POST",
-        headers: { authorization: "Bearer correct" },
+        headers: { authorization: "Bearer correct-token-16" },
       })),
       null,
     );

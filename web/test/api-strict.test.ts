@@ -146,12 +146,12 @@ test("/api/universe/refresh emits terminal error and leaves file unchanged when 
   const restore = installStrictFailureFetch();
   process.env.LLM_PROVIDER = "deepseek";
   process.env.DEEPSEEK_API_KEY = "sk-test";
-  process.env.UNIVERSE_REFRESH_TOKEN = "test-refresh-token";
+  process.env.UNIVERSE_REFRESH_TOKEN = "test-refresh-token-16";
   try {
     const { POST } = await import("../app/api/universe/refresh/route");
     const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {
       method: "POST",
-      headers: { "x-universe-refresh-token": "test-refresh-token" },
+      headers: { "x-universe-refresh-token": "test-refresh-token-16" },
     })));
     const terminal = events.at(-1);
     assert.equal(terminal?.type, "error");
@@ -168,12 +168,12 @@ test("/api/universe/refresh emits terminal error and leaves file unchanged when 
 test("/api/universe/refresh refuses explicitly on read-only deployments", async () => {
   const before = fs.readFileSync("data/universe.json", "utf-8");
   process.env.UNIVERSE_REFRESH_ENABLED = "0";
-  process.env.UNIVERSE_REFRESH_TOKEN = "test-refresh-token";
+  process.env.UNIVERSE_REFRESH_TOKEN = "test-refresh-token-16";
   try {
     const { POST } = await import("../app/api/universe/refresh/route");
     const events = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {
       method: "POST",
-      headers: { "x-universe-refresh-token": "test-refresh-token" },
+      headers: { "x-universe-refresh-token": "test-refresh-token-16" },
     })));
     const terminal = events.at(-1);
     assert.equal(terminal?.type, "error");
@@ -196,7 +196,7 @@ test("/api/universe/refresh refuses when refresh token is missing or wrong", asy
     assert.equal(noToken.at(-1)?.type, "error");
     assert.match(String(noToken.at(-1)?.message), /未配置 UNIVERSE_REFRESH_TOKEN/);
 
-    process.env.UNIVERSE_REFRESH_TOKEN = "expected-token";
+    process.env.UNIVERSE_REFRESH_TOKEN = "expected-token-16";
     const wrong = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {
       method: "POST",
       headers: { "x-universe-refresh-token": "wrong" },

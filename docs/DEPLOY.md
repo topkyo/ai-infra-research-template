@@ -68,7 +68,8 @@ BACKTEST_SIGNAL_CONCURRENCY=8
 BACKTEST_LLM_SCORE_BATCH_SIZE=10
 BACKTEST_LLM_TIMEOUT_MS=300000
 UNIVERSE_REFRESH_LLM_TIMEOUT_MS=900000
-UNIVERSE_REFRESH_TOKEN=change-me-universe-refresh-token
+# 必填：openssl rand -hex 24   （勿使用占位字符串）
+UNIVERSE_REFRESH_TOKEN=
 ```
 
 当前 `docker-compose.yml` 只把 `TUSHARE_TOKEN` 和 `PYSERVER_CACHE_DB` 传给 pyserver。若要在 Docker 中启用 Tushare 次级源，先在 `docker-compose.yml` 的 `pyserver.environment` 增加 `MARKET_ENABLE_TUSHARE_SECONDARY` 和 `STRICT_LIVE_DATA`，再配置：
@@ -90,11 +91,11 @@ Tushare 接口权限见 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。
 
 web 服务挂载：
 
-- `./web/data` → 容器内 `/app/data`（目录挂载，支持 `universe.json` 原子 tmp+rename；UI 刷新写入宿主机检出）
-- `./private/holdings.local.json` → 容器内 `/app/data/holdings.local.json`（叠在 data 目录之上）
+- `./web/data` → 容器内 `/app/data`（目录挂载，支持 `universe.json` 原子 tmp+rename）
+- `./private` → 容器内 `/app/private`（`HOLDINGS_FILE=/app/private/holdings.local.json`，支持持仓原子写）
 - named volume `web-cache` → 容器内 `/app/.cache`（LLM 与回测 SQLite 缓存）
 
-股票池 UI 刷新另需在 `.env` 设置 `UNIVERSE_REFRESH_TOKEN`（与首页「刷新令牌」一致）；未设置时接口拒绝并显式报错。
+股票池 UI 刷新另需在 `.env` 设置强随机 `UNIVERSE_REFRESH_TOKEN`（≥16 位，与首页令牌一致）；未设置或仍为占位值时接口拒绝。
 
 **首次启动前**必须从示例复制持仓文件，否则 bind mount 可能失败：
 
