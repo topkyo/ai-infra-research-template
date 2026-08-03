@@ -119,7 +119,7 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 | `LLM_SCORE_BATCH_SIZE` | `10` | `scoreSymbols` 其他调用方默认批大小。 |
 | `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` | `900000` | 股票池刷新提议阶段 LLM 超时。 |
 | `UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS` | `20000` | 股票池刷新新增标的 pyserver 校验超时。 |
-| `UNIVERSE_REFRESH_ENABLED` | 本地 `1` / compose `0` | 设为 `0` 时 `/api/universe/refresh` 显式报错且首页刷新按钮禁用；生产只读股票池，刷新只在本地进行，审查后提交部署。 |
+| `UNIVERSE_REFRESH_ENABLED` | `1` | 设为 `0` 时 `/api/universe/refresh` 显式报错且首页刷新按钮禁用（冻结场景）。默认启用：compose 将 `universe.json` bind-mount 到宿主机 git 检出，UI 刷新直接写入宿主机文件，跨容器重建持久化；`git pull` 更新即时生效。 |
 
 批大小越小越稳，但总耗时更长。信号和回测失败时优先检查 key、模型、批大小、超时和 pyserver 可用性。
 

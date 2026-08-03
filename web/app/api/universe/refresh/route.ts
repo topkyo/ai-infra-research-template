@@ -15,9 +15,10 @@ export async function POST(_req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       };
       try {
-        // Read-only deployments (production compose sets UNIVERSE_REFRESH_ENABLED=0):
-        // fail explicitly instead of writing an ephemeral container file that
-        // diverges from git and is lost on the next recreate.
+        // Frozen deployments (UNIVERSE_REFRESH_ENABLED=0, e.g. demos):
+        // fail explicitly instead of silently accepting a refresh the caller
+        // did not intend. Default is enabled — compose bind-mounts
+        // universe.json to the host git checkout so writes persist.
         if (process.env.UNIVERSE_REFRESH_ENABLED === "0") {
           send({
             type: "error",
