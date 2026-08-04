@@ -158,6 +158,11 @@ def seconds_until_next_trading_close() -> int:
     return int((target - now).total_seconds())
 
 
+def _empty_bars_ttl(end: str) -> int:
+    """Short TTL only when the window can still grow; closed windows are immutable."""
+    return 60 if end >= date.today().strftime("%Y%m%d") else 24 * 3600
+
+
 # ---------- retry wrapper + per-endpoint rate limiter ----------------------
 
 import threading
@@ -466,7 +471,11 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
     Sina's daily endpoint is slower and less feature-rich, but has been more
     reliable for this watchlist, so use it as the second AkShare path before
     falling back to Tushare.
+
+    ``None`` means upstream failure; an empty DataFrame means the source
+    succeeded but returned zero rows for the requested window.
     """
+    first_success_empty = False
     try:
         df = _with_retries(
             _ak_call,
@@ -481,6 +490,8 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
         df = None
     if df is not None and not df.empty:
         return df
+    if df is not None and df.empty:
+        first_success_empty = True
     try:
         df = _with_retries(
             _ak_call,
@@ -493,9 +504,11 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
             base_delay=0.2,
         )
     except Exception:
-        return None
-    if df is None or df.empty:
-        return None
+        return pd.DataFrame() if first_success_empty else None
+    if df is None:
+        return pd.DataFrame() if first_success_empty else None
+    if df.empty:
+        return df
     return df
 
 
@@ -560,13 +573,13 @@ def _baostock_hist_df(ts_code: str, start: str, end: str, adjust: str) -> pd.Dat
         finally:
             _baostock_logout()
     if not data:
-        return None
+        return pd.DataFrame()
     df = pd.DataFrame(data, columns=rs.fields)
     for col in ("open", "high", "low", "close", "volume"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=["date", "open", "high", "low", "close"])
     if df.empty:
-        return None
+        return pd.DataFrame()
     return df
 
 
@@ -992,8 +1005,16 @@ def klines(
         log.exception("klines upstream failed for %s", symbol)
         raise HTTPException(502, "upstream market data error; detail logged server-side") from e
 
-    if df is None or df.empty:
-        cache_put(key, [], 3600)
+    if df is None:
+        # All sources returned None — either upstream failure or unreachable.
+        # Do NOT disguise this as a successful empty result (禁止静默降级).
+        log.warning("klines: all sources returned None for %s (%s-%s)", symbol, start, end)
+        raise HTTPException(502, "market data unavailable from any source; detail logged server-side")
+    if df.empty:
+        # A working source returned an empty DataFrame — genuinely no bars
+        # in the requested window (e.g. pre-IPO date range). Short TTL so
+        # a retry sooner can pick up newly available data.
+        cache_put(key, [], _empty_bars_ttl(end))
         return []
 
     if market == "hk":
@@ -1289,8 +1310,13 @@ def benchmark_klines(
             log.exception("benchmark klines upstream failed for %s", index)
             raise HTTPException(502, "upstream index data error; detail logged server-side") from e
 
-    if df is None or df.empty:
-        cache_put(key, [], 3600)
+    if df is None:
+        # All sources returned None — upstream failure, not genuinely empty.
+        # Do NOT disguise this as a successful empty result (禁止静默降级).
+        log.warning("benchmark/klines: all sources returned None for %s (%s-%s)", index, start, end)
+        raise HTTPException(502, "index data unavailable from any source; detail logged server-side")
+    if df.empty:
+        cache_put(key, [], _empty_bars_ttl(end))
         return []
 
     if "trade_date" in df.columns:

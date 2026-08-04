@@ -14,7 +14,10 @@ RUN npm run build
 
 FROM node:24-slim AS runner
 WORKDIR /app
+# tzdata ensures TZ=Asia/Shanghai is respected (node:*-slim omits zoneinfo by default).
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
+ENV TZ=Asia/Shanghai
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json

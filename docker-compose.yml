@@ -12,6 +12,7 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
+      TZ: Asia/Shanghai
       TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
       PYSERVER_CACHE_DB: /app/cache-data/cache.db
     volumes:
@@ -43,6 +44,7 @@ services:
       - ./private:/app/private
       - web-cache:/app/.cache
     environment:
+      TZ: Asia/Shanghai
       # Writable dir mount (not a single-file bind) for holdings atomic writes.
       HOLDINGS_FILE: /app/private/holdings.local.json
       LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}

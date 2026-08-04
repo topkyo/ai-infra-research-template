@@ -128,9 +128,9 @@ def analyst(symbol: str):
     compact_symbol = ts_code.split(".")[0]
     research = _ak_research_consensus(compact_symbol)
     out.update(research)
-    for key in ("buy_count", "total_count", "buy_ratio", "consensus_eps_next"):
-        if key in research and research.get(key) is not None:
-            out["field_sources"][key] = "akshare_research_report"
+    for field_name in ("buy_count", "total_count", "buy_ratio", "consensus_eps_next"):
+        if field_name in research and research.get(field_name) is not None:
+            out["field_sources"][field_name] = "akshare_research_report"
 
     if out.get("consensus_eps_next") is None:
         eps, forecast_count = _ak_consensus_eps(compact_symbol)
