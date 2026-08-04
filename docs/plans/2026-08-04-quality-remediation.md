@@ -3,6 +3,8 @@
 > **For agentic workers:** Load `executing-plans`（2+ tasks）。按 **文件所有权车道** 并行；`main.py` 单车道串行。每任务按符号定位，**禁止依赖本文行号**。完成后 `finishing`。Checkbox 跟踪进度。
 >
 > **修订依据：** 2026-08-04 多 agent 交叉评估（A/C、B/F、D/E、整体裁决）。原「全量」范围过大且依赖图不安全；本版收缩为可并行执行的正确性 / 测试 / 小清理波次。大重构另立计划。
+>
+> **执行状态（2026-08-04）：** Wave 1 + Wave 2 已在分支 `feat/quality-remediation`（`673b897`）落地。最终门禁：pyserver 120 / web 123 / `tsc` OK。B6 Docker build/`id` 断言因执行环境无 Docker 为 soft-blocked，镜像与 compose 变更已提交。Wave 3（modularize）仍外置。
 
 **Goal:** 消除仍会伪造或静默降级的数据路径，补齐失败语义测试，并做低风险清理与文档/部署硬化。  
 **Constraint:** 新增 fallback/兜底前须用户同意；失败须显式 `error`/`unavailable`/`warning`（AGENTS.md）。  
