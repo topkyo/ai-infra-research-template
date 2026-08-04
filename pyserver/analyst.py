@@ -121,7 +121,8 @@ def analyst(symbol: str):
                 if pe_ttm is None and pd.notna(latest.get("pe_ttm")):
                     pe_ttm = float(latest["pe_ttm"])
         except Exception as e:
-            out["warnings"].append(f"tushare daily_basic unavailable: {e}")
+            log.exception("tushare daily_basic failed for %s", ts_code)
+            out["warnings"].append(f"tushare daily_basic unavailable: {type(e).__name__}")
     elif out.get("current_price") is None or pe_ttm is None:
         out["warnings"].append("Tushare daily_basic secondary disabled")
 
@@ -173,10 +174,8 @@ def analyst(symbol: str):
     try:
         rc = _with_retries(_report_rc, ts_code=ts_code, start_date=start)
     except Exception as e:
-        # warnings keep the audit-trail detail; the error field (a failure
-        # conclusion surfaced in the UI) stays generic, detail goes to logs.
         log.exception("tushare report_rc failed for %s", ts_code)
-        out["warnings"].append(f"tushare report_rc unavailable: {e}")
+        out["warnings"].append(f"tushare report_rc unavailable: {type(e).__name__}")
         if not any(out.get(k) is not None for k in ("implied_target", "buy_count", "total_count", "consensus_eps_next", "upside_pct")):
             out["error"] = "report_rc unavailable; detail logged server-side"
         cache_put(key, out, 60)

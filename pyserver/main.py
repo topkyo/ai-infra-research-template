@@ -287,7 +287,10 @@ def _attach_profit_yoy(out: dict[str, Any], ts_code: str, market: str) -> None:
     try:
         profit_yoy = _latest_profit_yoy(ts_code)
     except Exception as e:
-        out.setdefault("warnings", []).append(f"tushare fina_indicator unavailable: {e}")
+        log.exception("tushare fina_indicator failed for %s", ts_code)
+        out.setdefault("warnings", []).append(
+            f"tushare fina_indicator unavailable: {type(e).__name__}"
+        )
         return
     if profit_yoy is not None:
         out["profit_yoy"] = profit_yoy
@@ -1198,7 +1201,8 @@ def fundamental(symbol: str):
                     out["market_cap"] = float(latest["total_mv"]) / 1e4
                     out["field_sources"]["market_cap"] = "tushare_daily_basic"
         except Exception as e:
-            out["warnings"].append(f"tushare daily_basic unavailable: {e}")
+            log.exception("tushare daily_basic failed for %s", ts_code)
+            out["warnings"].append(f"tushare daily_basic unavailable: {type(e).__name__}")
     elif market in {"sh", "sz", "bj"} and not MARKET_ENABLE_TUSHARE_SECONDARY:
         missing_for_tushare = [field for field in ("pe_ttm", "pb", "market_cap") if out.get(field) is None]
         if missing_for_tushare:
