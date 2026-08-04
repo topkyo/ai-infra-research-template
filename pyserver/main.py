@@ -214,7 +214,8 @@ def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwarg
             return fn(*args, **kwargs)
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(base_delay * (2 ** i))
+            if i < attempts - 1:
+                time.sleep(base_delay * (2 ** i))
     assert last is not None
     raise last
 
