@@ -214,7 +214,8 @@ def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwarg
             return fn(*args, **kwargs)
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(base_delay * (2 ** i))
+            if i < attempts - 1:
+                time.sleep(base_delay * (2 ** i))
     assert last is not None
     raise last
 
@@ -287,7 +288,10 @@ def _attach_profit_yoy(out: dict[str, Any], ts_code: str, market: str) -> None:
     try:
         profit_yoy = _latest_profit_yoy(ts_code)
     except Exception as e:
-        out.setdefault("warnings", []).append(f"tushare fina_indicator unavailable: {e}")
+        log.exception("tushare fina_indicator failed for %s", ts_code)
+        out.setdefault("warnings", []).append(
+            f"tushare fina_indicator unavailable: {type(e).__name__}"
+        )
         return
     if profit_yoy is not None:
         out["profit_yoy"] = profit_yoy
@@ -365,6 +369,18 @@ class Analyst(BaseModel):
     field_sources: dict[str, str] | None = None
 
 
+class Spot(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    change_pct: float | None = None
+    volume: float | None = None
+    turnover: float | None = None
+    source: str | None = None
+    fetched_at: str | None = None
+    warnings: list[str] | None = None
+
+
 # ---------- symbol normalization -------------------------------------------
 
 
@@ -419,11 +435,16 @@ def _num_or_none(value: Any) -> float | None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    matches = re.findall(r"-?\d+(?:\.\d+)?", str(value))
-    if not matches:
-        return None
-    nums = [float(x) for x in matches]
-    return sum(nums) / len(nums)
+    text = str(value).replace(",", "")
+    matches = re.findall(r"-?\d+(?:\.\d+)?", text)
+    if len(matches) == 1:
+        return float(matches[0])
+    log.warning(
+        "_num_or_none: expected exactly one number in %r, found %d",
+        value,
+        len(matches),
+    )
+    return None
 
 
 def _compact_code(ts_code: str) -> str:
@@ -487,7 +508,8 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
             end_date=end,
             adjust=adjust or "",
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_zh_a_hist", e)
         df = None
     if df is not None and not df.empty:
         return df
@@ -504,7 +526,8 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_zh_a_daily", e)
         return pd.DataFrame() if first_success_empty else None
     if df is None:
         return pd.DataFrame() if first_success_empty else None
@@ -648,7 +671,8 @@ def _ak_stock_value_row(ts_code: str) -> dict[str, Any] | None:
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_value_em", e)
         cache_put(key, NEGATIVE_CACHE, 300)
         return None
     if df is None or df.empty:
@@ -686,9 +710,9 @@ def _ak_a_spot_from_hist(ts_code: str, market: str, symbol: str) -> dict[str, An
         "symbol": symbol,
         "name": str(row.get("名称") or ""),
         "price": price,
-        "change_pct": _num_or_none(_ak_col(row, "涨跌幅", "pct_chg")) or 0,
-        "volume": _num_or_none(_ak_col(row, "成交量", "volume")) or 0,
-        "turnover": _num_or_none(_ak_col(row, "成交额", "amount")) or 0,
+        "change_pct": _num_or_none(_ak_col(row, "涨跌幅", "pct_chg")),
+        "volume": _num_or_none(_ak_col(row, "成交量", "volume")),
+        "turnover": _num_or_none(_ak_col(row, "成交额", "amount")),
     }
 
 
@@ -717,7 +741,8 @@ def _ak_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
         response = _requests_get_no_proxy(url, params=params, timeout=3)
         response.raise_for_status()
         data = response.json().get("data")
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_a_spot_em", e)
         cache_put(key, NEGATIVE_CACHE, 10)
         return None
     if not data:
@@ -769,9 +794,9 @@ def parse_sina_hq_text(text: str, code: str) -> dict[str, Any] | None:
         "代码": code,
         "名称": parts[0] or None,
         "最新价": price,
-        "涨跌幅": change_pct if change_pct is not None else 0,
-        "成交量": volume or 0,
-        "成交额": turnover or 0,
+        "涨跌幅": change_pct,
+        "成交量": volume,
+        "成交额": turnover,
     }
 
 
@@ -800,7 +825,8 @@ def _sina_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
         response.raise_for_status()
         response.encoding = "gbk"
         row = parse_sina_hq_text(response.text, code)
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "sina_hq_sinajs", e)
         cache_put(key, NEGATIVE_CACHE, 10)
         return None
     if row is None:
@@ -819,7 +845,8 @@ def _ak_a_spot(ts_code: str, market: str) -> dict[str, Any] | None:
         if row is not None:
             return row
         return _sina_a_spot_rows(ts_code, market)
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_a_spot", e)
         return None
 
 
@@ -829,8 +856,28 @@ def _spot_api_source_from_row(row: dict[str, Any]) -> str:
     return "eastmoney"
 
 
+def _spot_missing_field_warnings(
+    *,
+    change_pct: float | None = None,
+    volume: float | None = None,
+    turnover: float | None = None,
+) -> list[str]:
+    warnings: list[str] = []
+    if change_pct is None:
+        warnings.append("change_pct unavailable from upstream")
+    if volume is None:
+        warnings.append("volume unavailable from upstream")
+    if turnover is None:
+        warnings.append("turnover unavailable from upstream")
+    return warnings
+
+
 def _spot_warnings_from_row(row: dict[str, Any]) -> list[str]:
-    return []
+    return _spot_missing_field_warnings(
+        change_pct=_spot_change_pct_from_ak(row),
+        volume=_num_or_none(row.get("成交量")),
+        turnover=_num_or_none(row.get("成交额")),
+    )
 
 
 def _spot_price_from_ak(row: dict[str, Any]) -> float | None:
@@ -852,7 +899,8 @@ def _ak_consensus_eps(symbol: str) -> tuple[float | None, int | None]:
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_profit_forecast_ths", e)
         return None, None
     if df is None or df.empty or "年度" not in df.columns or "均值" not in df.columns:
         return None, None
@@ -883,7 +931,8 @@ def _ak_research_consensus(symbol: str) -> dict[str, Any]:
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_research_report_em", e)
         return {}
     if df is None or df.empty:
         return {}
@@ -926,7 +975,8 @@ def _resolve_name(ts_code: str, market: str) -> str | None:
             df = _pro.hk_basic(fields="ts_code,name")
         else:
             df = _pro.stock_basic(list_status="L", fields="ts_code,name")
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "tushare_name_lookup", e)
         return None
     if df is None or df.empty:
         return None
@@ -1117,6 +1167,10 @@ def fundamental(symbol: str):
             if stock_value.get(field) is not None:
                 out[field] = stock_value[field]
                 out["field_sources"][field] = "akshare_stock_value_em"
+        if stock_value.get("latest_close") is not None:
+            out["warnings"].append(
+                "latest_close is latest daily close from AkShare stock_value_em, not realtime"
+            )
     elif market in {"sh", "sz", "bj"}:
         out["warnings"].append("akshare stock_value_em unavailable")
 
@@ -1164,7 +1218,8 @@ def fundamental(symbol: str):
                     out["market_cap"] = float(latest["total_mv"]) / 1e4
                     out["field_sources"]["market_cap"] = "tushare_daily_basic"
         except Exception as e:
-            out["warnings"].append(f"tushare daily_basic unavailable: {e}")
+            log.exception("tushare daily_basic failed for %s", ts_code)
+            out["warnings"].append(f"tushare daily_basic unavailable: {type(e).__name__}")
     elif market in {"sh", "sz", "bj"} and not MARKET_ENABLE_TUSHARE_SECONDARY:
         missing_for_tushare = [field for field in ("pe_ttm", "pb", "market_cap") if out.get(field) is None]
         if missing_for_tushare:
@@ -1180,7 +1235,7 @@ def fundamental(symbol: str):
     return out
 
 
-@app.get("/spot")
+@app.get("/spot", response_model=Spot)
 def spot(symbol: str):
     """Most-recent close (Tushare Pro has no realtime quote). 30s cache."""
     symbol = _validate_symbol(symbol)
@@ -1205,13 +1260,16 @@ def spot(symbol: str):
             ak_spot = _ak_a_spot(ts_code, market)
             price = _spot_price_from_ak(ak_spot) if ak_spot is not None else None
             if ak_spot is not None and price is not None:
+                change_pct = _spot_change_pct_from_ak(ak_spot)
+                volume = _num_or_none(ak_spot.get("成交量"))
+                turnover = _num_or_none(ak_spot.get("成交额"))
                 out = {
                     "symbol": symbol,
                     "name": str(ak_spot.get("名称") or _resolve_name(ts_code, market) or ""),
                     "price": price,
-                    "change_pct": _spot_change_pct_from_ak(ak_spot) or 0,
-                    "volume": _num_or_none(ak_spot.get("成交量")) or 0,
-                    "turnover": _num_or_none(ak_spot.get("成交额")) or 0,
+                    "change_pct": change_pct,
+                    "volume": volume,
+                    "turnover": turnover,
                     "source": _spot_api_source_from_row(ak_spot),
                     "fetched_at": datetime.now().isoformat(),
                     "warnings": _spot_warnings_from_row(ak_spot),
@@ -1220,31 +1278,41 @@ def spot(symbol: str):
                 return out
             stock_value = _ak_stock_value_row(ts_code)
             if stock_value is not None and stock_value.get("latest_close") is not None:
+                change_pct = _num_or_none(stock_value.get("change_pct"))
                 out = {
                     "symbol": symbol,
                     "name": "",
                     "price": float(stock_value["latest_close"]),
-                    "change_pct": float(stock_value.get("change_pct") or 0),
-                    "volume": 0,
-                    "turnover": 0,
+                    "change_pct": change_pct,
+                    "volume": None,
+                    "turnover": None,
                     "source": "akshare_stock_value_em_close",
                     "fetched_at": datetime.now().isoformat(),
-                    "warnings": ["Eastmoney realtime unavailable; returned AkShare stock_value_em latest daily close, not realtime"],
+                    "warnings": [
+                        "Eastmoney realtime unavailable; returned AkShare stock_value_em latest daily close, not realtime",
+                        *_spot_missing_field_warnings(change_pct=change_pct, volume=None, turnover=None),
+                    ],
                 }
                 cache_put(key, out, 30)
                 return out
             hist_spot = _ak_a_spot_from_hist(ts_code, market, symbol)
             if hist_spot is not None:
+                change_pct = _num_or_none(hist_spot.get("change_pct"))
+                volume = _num_or_none(hist_spot.get("volume"))
+                turnover = _num_or_none(hist_spot.get("turnover"))
                 out = {
                     "symbol": symbol,
                     "name": hist_spot.get("name") or "",
                     "price": float(hist_spot["price"]),
-                    "change_pct": float(hist_spot.get("change_pct") or 0),
-                    "volume": float(hist_spot.get("volume") or 0),
-                    "turnover": float(hist_spot.get("turnover") or 0),
+                    "change_pct": change_pct,
+                    "volume": volume,
+                    "turnover": turnover,
                     "source": "akshare_daily_close",
                     "fetched_at": datetime.now().isoformat(),
-                    "warnings": ["Eastmoney realtime unavailable; returned AkShare latest daily close, not realtime"],
+                    "warnings": [
+                        "Eastmoney realtime unavailable; returned AkShare latest daily close, not realtime",
+                        *_spot_missing_field_warnings(change_pct=change_pct, volume=volume, turnover=turnover),
+                    ],
                 }
                 cache_put(key, out, 30)
                 return out
@@ -1276,16 +1344,28 @@ def spot(symbol: str):
         log.exception("spot upstream failed for %s", symbol)
         raise HTTPException(502, "upstream market data error; detail logged server-side") from e
     r = df.iloc[-1]
+    price = _num_or_none(r.get("close"))
+    if price is None:
+        raise HTTPException(502, f"spot quote unavailable for {symbol}")
+    change_pct = _num_or_none(r.get("pct_chg"))
+    volume = _num_or_none(r.get("vol"))
+    turnover = _num_or_none(r.get("amount"))
+    base_warnings: list[str] = (
+        [] if market == "hk" else ["Eastmoney realtime unavailable; returned Tushare latest daily close, not realtime"]
+    )
     out = {
         "symbol": symbol,
         "name": _resolve_name(ts_code, market) or "",
-        "price": float(r.get("close", 0) or 0),
-        "change_pct": float(r.get("pct_chg", 0) or 0),
-        "volume": float(r.get("vol", 0) or 0),
-        "turnover": float(r.get("amount", 0) or 0),
+        "price": price,
+        "change_pct": change_pct,
+        "volume": volume,
+        "turnover": turnover,
         "source": "akshare-hk-hist" if market == "hk" else "tushare-daily-close",
         "fetched_at": datetime.now().isoformat(),
-        "warnings": [] if market == "hk" else ["Eastmoney realtime unavailable; returned Tushare latest daily close, not realtime"],
+        "warnings": [
+            *base_warnings,
+            *_spot_missing_field_warnings(change_pct=change_pct, volume=volume, turnover=turnover),
+        ],
     }
     cache_put(key, out, 30)
     return out
