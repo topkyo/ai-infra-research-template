@@ -1,0 +1,16 @@
+.env
+.env.*
+cache.db
+cache.db-*
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+test_*.py
+*.md
+.git
+.gitignore
