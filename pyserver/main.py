@@ -160,7 +160,7 @@ def seconds_until_next_trading_close() -> int:
 
 def _empty_bars_ttl(end: str) -> int:
     """Short TTL only when the window can still grow; closed windows are immutable."""
-    return 60 if end >= date.today().strftime("%Y%m%d") else 24 * 3600
+    return 300 if end >= date.today().strftime("%Y%m%d") else 24 * 3600
 
 
 # ---------- retry wrapper + per-endpoint rate limiter ----------------------

@@ -14,7 +14,7 @@ import main
 class EmptyBarsTtlTest(unittest.TestCase):
     def test_open_window_short_ttl(self) -> None:
         today = date.today().strftime("%Y%m%d")
-        self.assertEqual(main._empty_bars_ttl(today), 60)
+        self.assertEqual(main._empty_bars_ttl(today), 300)
 
     def test_closed_window_long_ttl(self) -> None:
         past = (date.today() - timedelta(days=30)).strftime("%Y%m%d")
