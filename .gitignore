@@ -20,6 +20,7 @@ private/web-cache/
 /.claude/
 .monitor/
 .codegraph/
+.worktrees/
 
 # AgentStack local development layer
 .agentstack/
