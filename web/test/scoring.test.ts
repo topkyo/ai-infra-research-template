@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRuleFeatures, rankByRules } from "../lib/scoring/rules";
+import { buildRuleFeatures, rankByFeatures } from "../lib/scoring/rules";
 import type { SymbolSnapshot } from "../lib/deepseek";
 
 const up: SymbolSnapshot = {
@@ -17,8 +17,8 @@ const down: SymbolSnapshot = {
   fundamental: { pe_ttm: 80, profit_yoy: 5, pb: 5, market_cap: 500 },
 };
 
-test("rankByRules orders stronger fundamentals+momentum first", () => {
-  const ranked = rankByRules([down, up]);
+test("rankByFeatures orders stronger fundamentals+momentum first", () => {
+  const ranked = rankByFeatures([down, up]);
   assert.equal(ranked[0].symbol, "UP");
   assert.ok(ranked[0].score > ranked[1].score);
 });

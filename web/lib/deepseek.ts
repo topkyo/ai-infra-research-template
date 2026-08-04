@@ -601,8 +601,6 @@ async function scoreSymbolsBatchLlm(
   throw lastError;
 }
 
-export const scoreSymbolsLlm = scoreSymbolsBatchLlm;
-
 async function scorePortfolioTargetsBatchLlm(
   snapshots: PortfolioScoringSnapshot[],
   opts: {

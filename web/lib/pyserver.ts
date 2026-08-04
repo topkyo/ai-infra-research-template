@@ -23,7 +23,6 @@ export interface Fundamental {
   latest_close?: number | null;
   latest_date?: string | null;
   change_pct?: number | null;
-  revenue_yoy?: number | null;
   profit_yoy?: number | null;
   source?: string | null;
   fetched_at?: string | null;

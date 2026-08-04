@@ -142,10 +142,6 @@ def _market_http_get(
     return _market_http_session().get(url, params=params, headers=headers, timeout=timeout)
 
 
-def _requests_get_no_proxy(url: str, *, params: dict[str, Any], timeout: float) -> requests.Response:
-    return _market_http_get(url, params=params, timeout=timeout)
-
-
 app = FastAPI(title="topkyo pyserver", version="0.2.0")
 
 
@@ -192,7 +188,6 @@ class _TokenBucket:
 
 
 # Tushare free tier caps hk_daily at 2/minute. Self-throttle to avoid 502s.
-_HK_DAILY_LIMITER = _TokenBucket(n=2, window_s=65)
 _REPORT_RC_LIMITER = _TokenBucket(n=2, window_s=65)
 _DAILY_BASIC_LIMITER = _TokenBucket(n=2, window_s=65)
 _FINA_INDICATOR_LIMITER = _TokenBucket(n=2, window_s=65)
@@ -218,12 +213,6 @@ def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwarg
                 time.sleep(base_delay * (2 ** i))
     assert last is not None
     raise last
-
-
-def _hk_daily(**kwargs):
-    """Rate-limited wrapper around pro.hk_daily."""
-    _HK_DAILY_LIMITER.acquire()
-    return _pro.hk_daily(**kwargs)
 
 
 def _report_rc(**kwargs):
@@ -344,7 +333,6 @@ class Fundamental(BaseModel):
     latest_close: float | None = None
     latest_date: str | None = None
     change_pct: float | None = None
-    revenue_yoy: float | None = None
     profit_yoy: float | None = None
     source: str | None = None
     fetched_at: str | None = None
@@ -751,7 +739,7 @@ def _ak_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
         "secid": f"{_eastmoney_market_code(market)}.{code}",
     }
     try:
-        response = _requests_get_no_proxy(url, params=params, timeout=3)
+        response = _market_http_get(url, params=params, timeout=3)
         response.raise_for_status()
         data = response.json().get("data")
     except Exception as e:

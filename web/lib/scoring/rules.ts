@@ -100,7 +100,3 @@ export function buildRuleFeatures(snapshot: SymbolSnapshot): RuleFeatures {
 export function rankByFeatures(snapshots: SymbolSnapshot[]): RuleFeatures[] {
   return snapshots.map(buildRuleFeatures).sort((a, b) => b.score - a.score);
 }
-
-// Backwards-compatible name; this now ranks features only and does not imply
-// a rule-driven trading action.
-export const rankByRules = rankByFeatures;
