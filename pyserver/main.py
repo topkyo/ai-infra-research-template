@@ -1154,6 +1154,10 @@ def fundamental(symbol: str):
             if stock_value.get(field) is not None:
                 out[field] = stock_value[field]
                 out["field_sources"][field] = "akshare_stock_value_em"
+        if stock_value.get("latest_close") is not None:
+            out["warnings"].append(
+                "latest_close is latest daily close from AkShare stock_value_em, not realtime"
+            )
     elif market in {"sh", "sz", "bj"}:
         out["warnings"].append("akshare stock_value_em unavailable")
 
