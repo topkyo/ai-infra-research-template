@@ -56,6 +56,9 @@ test("applyRefresh accepts an empty proposal without updating updated_at or writ
   assert.equal(result.finalCount, 1);
   assert.equal(result.applied.added.length, 0);
   assert.equal(readRaw(), before);
+  const onDisk = JSON.parse(readRaw()) as UniverseFile;
+  assert.equal(onDisk.updated_at, baseUniverse.updated_at);
+  assert.equal(onDisk.updated_by, baseUniverse.updated_by);
 });
 
 test("applyRefresh rejects invalid adds without writing a no-change universe", async () => {
@@ -74,6 +77,8 @@ test("applyRefresh rejects invalid adds without writing a no-change universe", a
     assert.deepEqual(result.applied.added, []);
     assert.equal(result.applied.rejected[0].symbol, "300002");
     assert.equal(readRaw(), before);
+    const onDisk = JSON.parse(readRaw()) as UniverseFile;
+    assert.equal(onDisk.updated_at, baseUniverse.updated_at);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -102,4 +107,38 @@ test("applyRefresh writes only when a real add remove or reclassify is applied",
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("applyRefresh bumps updated_at when a symbol is removed", async () => {
+  writeBase();
+  const { applyRefresh } = await import("../lib/universe-refresh");
+  const result = await applyRefresh(baseUniverse, {
+    adds: [],
+    removes: ["000001"],
+    reclassifies: [],
+    rationale: "剔除",
+  });
+  const next = JSON.parse(readRaw()) as UniverseFile;
+  assert.deepEqual(result.applied.removed, ["000001"]);
+  assert.equal(next.entries.length, 0);
+  assert.notEqual(next.updated_at, baseUniverse.updated_at);
+  assert.equal(next.updated_by, "deepseek-refresh");
+});
+
+test("applyRefresh bumps updated_at when a symbol is reclassified", async () => {
+  writeBase();
+  const { applyRefresh } = await import("../lib/universe-refresh");
+  const result = await applyRefresh(baseUniverse, {
+    adds: [],
+    removes: [],
+    reclassifies: [{ symbol: "000001", theme: "AI-PCB" }],
+    rationale: "改类",
+  });
+  const next = JSON.parse(readRaw()) as UniverseFile;
+  assert.equal(result.applied.reclassified.length, 1);
+  assert.equal(result.applied.reclassified[0].from, "云/AI基建");
+  assert.equal(result.applied.reclassified[0].to, "AI-PCB");
+  assert.equal(next.entries[0].theme, "AI-PCB");
+  assert.notEqual(next.updated_at, baseUniverse.updated_at);
+  assert.equal(next.updated_by, "deepseek-refresh");
 });

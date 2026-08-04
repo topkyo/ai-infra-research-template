@@ -400,3 +400,10 @@ test("T+1: no symbol is bought and sold on the same day", async () => {
     assert.ok(!(s.has("buy") && s.has("sell")), `same-day round trip on ${key}`);
   }
 });
+
+test("runBacktest rejects zero start equity instead of fabricating zero stats", async () => {
+  await assert.rejects(
+    () => runBacktest(makeSeries(), { ...cfg, startCash: 0 }, { scorer }),
+    /start equity must be finite and positive/i,
+  );
+});

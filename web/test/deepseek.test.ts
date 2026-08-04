@@ -244,15 +244,63 @@ test("chatDetailed reports exhausted transient provider retries", async () => {
   }
 });
 
-test("scoreSymbols clamps numeric fields and truncates rationale", async () => {
+test("scoreSymbols rejects out-of-range confidence and size", async () => {
+  const { scoreSymbols } = await import("../lib/deepseek");
+  await assert.rejects(
+    () => withMockedLlm(
+      () => ({ signals: [{ symbol: "A", action: "buy", confidence: 2, size: 0.5, rationale: "ok" }] }),
+      () => scoreSymbols([snapshot("A")], { bypassCache: true }),
+    ),
+    /invalid confidence: 2/,
+  );
+  await assert.rejects(
+    () => withMockedLlm(
+      () => ({ signals: [{ symbol: "A", action: "buy", confidence: 0.5, size: -1, rationale: "ok" }] }),
+      () => scoreSymbols([snapshot("A")], { bypassCache: true }),
+    ),
+    /invalid size: -1/,
+  );
+});
+
+test("scoreSymbols retries strict confidence and size failures bypassing cached bad output", async () => {
+  const { scoreSymbols } = await import("../lib/deepseek");
+  const { result, calls, userMessages } = await withMockedLlm(
+    (symbols, call) => ({
+      signals: symbols.map((symbol) => call === 0
+        ? {
+            symbol,
+            action: "buy",
+            confidence: 1.5,
+            size: 0.3,
+            rationale: "first invalid",
+          }
+        : {
+            symbol,
+            action: "buy",
+            confidence: 0.8,
+            size: 0.3,
+            rationale: "retry valid",
+          }),
+    }),
+    () => scoreSymbols([snapshot("RETRY")]),
+  );
+
+  assert.deepEqual(calls, [["RETRY"], ["RETRY"]]);
+  assert.match(userMessages[1], /上一次输出未通过严格 JSON 校验/);
+  assert.match(userMessages[1], /invalid confidence/);
+  assert.equal(result[0].symbol, "RETRY");
+  assert.equal(result[0].confidence, 0.8);
+  assert.equal(result[0].size, 0.3);
+  assert.equal(result[0].source, "llm-live");
+});
+
+test("scoreSymbols truncates long rationale", async () => {
   const { scoreSymbols } = await import("../lib/deepseek");
   const long = "x".repeat(100);
   const { result } = await withMockedLlm(
-    () => ({ signals: [{ symbol: "A", action: "buy", confidence: 2, size: -1, rationale: long }] }),
+    () => ({ signals: [{ symbol: "A", action: "buy", confidence: 0.5, size: 0.3, rationale: long }] }),
     () => scoreSymbols([snapshot("A")], { bypassCache: true }),
   );
-  assert.equal(result[0].confidence, 1);
-  assert.equal(result[0].size, 0);
   assert.equal(result[0].rationale.length, 60);
 });
 

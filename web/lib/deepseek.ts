@@ -314,11 +314,6 @@ function envPositiveInt(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
-function clamp01(value: unknown): number {
-  const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
-  return Number(Math.min(1, Math.max(0, n)).toFixed(3));
-}
-
 function normalizeRationale(value: unknown): string {
   const text = typeof value === "string" && value.trim() ? value.trim() : "LLM未提供理由";
   return text.slice(0, 60);
@@ -353,6 +348,13 @@ function strictWeight(value: unknown, field: string, symbol: string): number {
   return Number(value.toFixed(6));
 }
 
+function strictSignalField(value: unknown, field: string, symbol: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`LLM signal ${symbol} invalid ${field}: ${String(value)}`);
+  }
+  return Number(value.toFixed(3));
+}
+
 function chunks<T>(items: T[], size: number): T[][] {
   const safeSize = Math.max(1, Math.floor(size));
   const out: T[][] = [];
@@ -378,6 +380,7 @@ function isStrictLlmOutputError(error: unknown): boolean {
     "LLM returned duplicate symbol",
     "LLM returned invalid action",
     "LLM signal item must be an object",
+    "LLM signal ",
     "LLM portfolio signal item must be an object",
     "LLM portfolio signal",
   ].some((marker) => error.message.includes(marker));
@@ -441,8 +444,8 @@ function normalizeLlmSignals(
     out.push({
       symbol,
       action: action as Signal["action"],
-      confidence: clamp01(candidate.confidence),
-      size: clamp01(candidate.size),
+      confidence: strictSignalField(candidate.confidence, "confidence", symbol),
+      size: strictSignalField(candidate.size, "size", symbol),
       rationale: normalizeRationale(candidate.rationale),
       source,
       dataQuality: featuresBySymbol.get(symbol)?.dataMissingFlags ?? [],
@@ -711,8 +714,8 @@ function mockPortfolioTargetFor(snapshot: PortfolioScoringSnapshot): PortfolioTa
     targetWeight: sig.action === "buy" ? 0.15 : 0,
     confidence: sig.confidence,
     rationale: sig.rationale,
-    evidence: [],
-    risks: [],
+    evidence: ["mock provider：基于窗口动量的占位证据，非真实研究，不可用于实盘决策"],
+    risks: ["mock provider：仅供测试/e2e，输出不可当作研究结论或交易依据"],
     invalidation: "mock provider",
     source: "llm-mock",
   };
