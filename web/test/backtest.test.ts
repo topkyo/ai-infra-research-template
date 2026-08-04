@@ -401,12 +401,9 @@ test("T+1: no symbol is bought and sold on the same day", async () => {
   }
 });
 
-test("runBacktest stats stay finite when start equity is zero", async () => {
-  const r = await runBacktest(makeSeries(), { ...cfg, startCash: 0 }, { scorer });
-  assert.ok(r.equityCurve.every((b) => b.equity === 0));
-  assert.equal(r.stats.totalReturnPct, 0);
-  assert.equal(r.stats.cagrPct, 0);
-  assert.equal(r.stats.maxDrawdownPct, 0);
-  assert.equal(r.stats.sharpe, 0);
-  assert.ok(Number.isFinite(r.stats.totalReturnPct));
+test("runBacktest rejects zero start equity instead of fabricating zero stats", async () => {
+  await assert.rejects(
+    () => runBacktest(makeSeries(), { ...cfg, startCash: 0 }, { scorer }),
+    /start equity must be finite and positive/i,
+  );
 });

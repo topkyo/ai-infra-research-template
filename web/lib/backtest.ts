@@ -104,18 +104,16 @@ export type Progress =
 
 
 function computeStatsFromEquities(equities: number[], trades = 0) {
-  const safeZero = {
-    totalReturnPct: 0,
-    cagrPct: 0,
-    maxDrawdownPct: 0,
-    sharpe: 0,
-    trades,
-  };
-  if (equities.length === 0) return safeZero;
+  if (equities.length === 0) {
+    throw new Error("backtest equity curve is empty");
+  }
   const start = equities[0];
   const end = equities[equities.length - 1];
-  if (!Number.isFinite(start) || start <= 0 || !Number.isFinite(end)) {
-    return safeZero;
+  if (!Number.isFinite(start) || start <= 0) {
+    throw new Error(`backtest start equity must be finite and positive (got ${start})`);
+  }
+  if (!Number.isFinite(end)) {
+    throw new Error(`backtest end equity must be finite (got ${end})`);
   }
   const totalReturnPct = (end / start - 1) * 100;
   const years = equities.length / 252;
