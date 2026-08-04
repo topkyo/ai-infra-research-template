@@ -686,9 +686,9 @@ def _ak_a_spot_from_hist(ts_code: str, market: str, symbol: str) -> dict[str, An
         "symbol": symbol,
         "name": str(row.get("名称") or ""),
         "price": price,
-        "change_pct": _num_or_none(_ak_col(row, "涨跌幅", "pct_chg")) or 0,
-        "volume": _num_or_none(_ak_col(row, "成交量", "volume")) or 0,
-        "turnover": _num_or_none(_ak_col(row, "成交额", "amount")) or 0,
+        "change_pct": _num_or_none(_ak_col(row, "涨跌幅", "pct_chg")),
+        "volume": _num_or_none(_ak_col(row, "成交量", "volume")),
+        "turnover": _num_or_none(_ak_col(row, "成交额", "amount")),
     }
 
 
@@ -769,9 +769,9 @@ def parse_sina_hq_text(text: str, code: str) -> dict[str, Any] | None:
         "代码": code,
         "名称": parts[0] or None,
         "最新价": price,
-        "涨跌幅": change_pct if change_pct is not None else 0,
-        "成交量": volume or 0,
-        "成交额": turnover or 0,
+        "涨跌幅": change_pct,
+        "成交量": volume,
+        "成交额": turnover,
     }
 
 
@@ -829,8 +829,28 @@ def _spot_api_source_from_row(row: dict[str, Any]) -> str:
     return "eastmoney"
 
 
+def _spot_missing_field_warnings(
+    *,
+    change_pct: float | None = None,
+    volume: float | None = None,
+    turnover: float | None = None,
+) -> list[str]:
+    warnings: list[str] = []
+    if change_pct is None:
+        warnings.append("change_pct unavailable from upstream")
+    if volume is None:
+        warnings.append("volume unavailable from upstream")
+    if turnover is None:
+        warnings.append("turnover unavailable from upstream")
+    return warnings
+
+
 def _spot_warnings_from_row(row: dict[str, Any]) -> list[str]:
-    return []
+    return _spot_missing_field_warnings(
+        change_pct=_spot_change_pct_from_ak(row),
+        volume=_num_or_none(row.get("成交量")),
+        turnover=_num_or_none(row.get("成交额")),
+    )
 
 
 def _spot_price_from_ak(row: dict[str, Any]) -> float | None:
@@ -1205,13 +1225,16 @@ def spot(symbol: str):
             ak_spot = _ak_a_spot(ts_code, market)
             price = _spot_price_from_ak(ak_spot) if ak_spot is not None else None
             if ak_spot is not None and price is not None:
+                change_pct = _spot_change_pct_from_ak(ak_spot)
+                volume = _num_or_none(ak_spot.get("成交量"))
+                turnover = _num_or_none(ak_spot.get("成交额"))
                 out = {
                     "symbol": symbol,
                     "name": str(ak_spot.get("名称") or _resolve_name(ts_code, market) or ""),
                     "price": price,
-                    "change_pct": _spot_change_pct_from_ak(ak_spot) or 0,
-                    "volume": _num_or_none(ak_spot.get("成交量")) or 0,
-                    "turnover": _num_or_none(ak_spot.get("成交额")) or 0,
+                    "change_pct": change_pct,
+                    "volume": volume,
+                    "turnover": turnover,
                     "source": _spot_api_source_from_row(ak_spot),
                     "fetched_at": datetime.now().isoformat(),
                     "warnings": _spot_warnings_from_row(ak_spot),
@@ -1220,31 +1243,41 @@ def spot(symbol: str):
                 return out
             stock_value = _ak_stock_value_row(ts_code)
             if stock_value is not None and stock_value.get("latest_close") is not None:
+                change_pct = _num_or_none(stock_value.get("change_pct"))
                 out = {
                     "symbol": symbol,
                     "name": "",
                     "price": float(stock_value["latest_close"]),
-                    "change_pct": float(stock_value.get("change_pct") or 0),
-                    "volume": 0,
-                    "turnover": 0,
+                    "change_pct": change_pct,
+                    "volume": None,
+                    "turnover": None,
                     "source": "akshare_stock_value_em_close",
                     "fetched_at": datetime.now().isoformat(),
-                    "warnings": ["Eastmoney realtime unavailable; returned AkShare stock_value_em latest daily close, not realtime"],
+                    "warnings": [
+                        "Eastmoney realtime unavailable; returned AkShare stock_value_em latest daily close, not realtime",
+                        *_spot_missing_field_warnings(change_pct=change_pct, volume=None, turnover=None),
+                    ],
                 }
                 cache_put(key, out, 30)
                 return out
             hist_spot = _ak_a_spot_from_hist(ts_code, market, symbol)
             if hist_spot is not None:
+                change_pct = _num_or_none(hist_spot.get("change_pct"))
+                volume = _num_or_none(hist_spot.get("volume"))
+                turnover = _num_or_none(hist_spot.get("turnover"))
                 out = {
                     "symbol": symbol,
                     "name": hist_spot.get("name") or "",
                     "price": float(hist_spot["price"]),
-                    "change_pct": float(hist_spot.get("change_pct") or 0),
-                    "volume": float(hist_spot.get("volume") or 0),
-                    "turnover": float(hist_spot.get("turnover") or 0),
+                    "change_pct": change_pct,
+                    "volume": volume,
+                    "turnover": turnover,
                     "source": "akshare_daily_close",
                     "fetched_at": datetime.now().isoformat(),
-                    "warnings": ["Eastmoney realtime unavailable; returned AkShare latest daily close, not realtime"],
+                    "warnings": [
+                        "Eastmoney realtime unavailable; returned AkShare latest daily close, not realtime",
+                        *_spot_missing_field_warnings(change_pct=change_pct, volume=volume, turnover=turnover),
+                    ],
                 }
                 cache_put(key, out, 30)
                 return out
@@ -1276,16 +1309,28 @@ def spot(symbol: str):
         log.exception("spot upstream failed for %s", symbol)
         raise HTTPException(502, "upstream market data error; detail logged server-side") from e
     r = df.iloc[-1]
+    price = _num_or_none(r.get("close"))
+    if price is None:
+        raise HTTPException(502, f"spot quote unavailable for {symbol}")
+    change_pct = _num_or_none(r.get("pct_chg"))
+    volume = _num_or_none(r.get("vol"))
+    turnover = _num_or_none(r.get("amount"))
+    base_warnings: list[str] = (
+        [] if market == "hk" else ["Eastmoney realtime unavailable; returned Tushare latest daily close, not realtime"]
+    )
     out = {
         "symbol": symbol,
         "name": _resolve_name(ts_code, market) or "",
-        "price": float(r.get("close", 0) or 0),
-        "change_pct": float(r.get("pct_chg", 0) or 0),
-        "volume": float(r.get("vol", 0) or 0),
-        "turnover": float(r.get("amount", 0) or 0),
+        "price": price,
+        "change_pct": change_pct,
+        "volume": volume,
+        "turnover": turnover,
         "source": "akshare-hk-hist" if market == "hk" else "tushare-daily-close",
         "fetched_at": datetime.now().isoformat(),
-        "warnings": [] if market == "hk" else ["Eastmoney realtime unavailable; returned Tushare latest daily close, not realtime"],
+        "warnings": [
+            *base_warnings,
+            *_spot_missing_field_warnings(change_pct=change_pct, volume=volume, turnover=turnover),
+        ],
     }
     cache_put(key, out, 30)
     return out

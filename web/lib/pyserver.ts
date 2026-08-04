@@ -107,9 +107,9 @@ export interface Spot {
   symbol: string;
   name: string;
   price: number;
-  change_pct: number;
-  volume?: number;
-  turnover?: number;
+  change_pct: number | null;
+  volume?: number | null;
+  turnover?: number | null;
   source?: string;
   fetched_at?: string;
   error?: string;
