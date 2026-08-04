@@ -6,6 +6,7 @@ dependencies = [
     "akshare>=1.18.60",
     "baostock>=0.9.1",
     "fastapi>=0.136.1",
+    "httpx>=0.28.1",
     "pandas>=3.0.3",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
