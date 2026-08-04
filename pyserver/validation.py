@@ -30,6 +30,7 @@ _SYMBOL_RE = re.compile(
 _SYMBOL_MAX_LEN = 12
 
 _DATE_MIN = date(1990, 1, 1)
+_DATE_RANGE_MAX_DAYS = 3650
 
 
 def _validate_symbol(symbol: str) -> str:
@@ -70,3 +71,17 @@ def _validate_date(s: str, name: str) -> str:
     if d > date.today() + timedelta(days=1):
         raise HTTPException(400, f"invalid {name}: too far in the future")
     return compact
+
+
+def _validate_date_range(start: str, end: str) -> None:
+    """Ensure start <= end and the inclusive window is at most 10 years.
+
+    Both arguments must already be normalized YYYYMMDD strings from
+    ``_validate_date``. Raises HTTPException(400) otherwise.
+    """
+    start_d = datetime.strptime(start, "%Y%m%d").date()
+    end_d = datetime.strptime(end, "%Y%m%d").date()
+    if start_d > end_d:
+        raise HTTPException(400, "invalid date range: start must be on or before end")
+    if (end_d - start_d).days > _DATE_RANGE_MAX_DAYS:
+        raise HTTPException(400, "date range exceeds 10-year maximum")
