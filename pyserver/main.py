@@ -403,6 +403,7 @@ from validation import (  # noqa: E402
     _SYMBOL_MAX_LEN,
     _SYMBOL_RE,
     _validate_date,
+    _validate_date_range,
     _validate_symbol,
 )
 
@@ -959,6 +960,7 @@ def klines(
     symbol = _validate_symbol(symbol)
     start = _validate_date(start, "start")
     end = _validate_date(end, "end") if end else date.today().strftime("%Y%m%d")
+    _validate_date_range(start, end)
     key = f"kline:{symbol}:{start}:{end}:{adjust}"
     cached = cache_get(key)
     if cached is not None:
@@ -1299,6 +1301,7 @@ def benchmark_klines(
         raise HTTPException(400, f"unknown index {index}")
     start = _validate_date(start, "start")
     end = _validate_date(end, "end") if end else date.today().strftime("%Y%m%d")
+    _validate_date_range(start, end)
     ts_code, _name = BENCHMARKS[index]
     key = f"bench:{index}:{start}:{end}"
     cached = cache_get(key)

@@ -110,6 +110,33 @@ class ValidateDateTest(unittest.TestCase):
         _assert_400(self, main._validate_date, "20990101", "end")
 
 
+class ValidateDateRangeTest(unittest.TestCase):
+    def test_accepts_inclusive_ten_year_window(self) -> None:
+        start_d = date(2020, 1, 1)
+        end_d = start_d + timedelta(days=3650)
+        main._validate_date_range(
+            start_d.strftime("%Y%m%d"),
+            end_d.strftime("%Y%m%d"),
+        )
+
+    def test_rejects_inverted_range(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            main._validate_date_range("20240101", "20230101")
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("start must be on or before end", str(ctx.exception.detail))
+
+    def test_rejects_overlong_range(self) -> None:
+        end_d = date.today() + timedelta(days=1)
+        start_d = end_d - timedelta(days=3651)
+        with self.assertRaises(HTTPException) as ctx:
+            main._validate_date_range(
+                start_d.strftime("%Y%m%d"),
+                end_d.strftime("%Y%m%d"),
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("10-year maximum", str(ctx.exception.detail))
+
+
 class EndpointValidationTest(unittest.TestCase):
     """Route functions raise 400 on invalid input before touching cache/network."""
 
@@ -121,6 +148,25 @@ class EndpointValidationTest(unittest.TestCase):
 
     def test_klines_rejects_bad_end(self) -> None:
         _assert_400(self, main.klines, symbol="600519", start="20230101", end="not-a-date", adjust="qfq")
+
+    def test_klines_rejects_inverted_date_range(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            main.klines(symbol="600519", start="20240101", end="20230101", adjust="qfq")
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("start must be on or before end", str(ctx.exception.detail))
+
+    def test_klines_rejects_overlong_date_range(self) -> None:
+        end_d = date.today() + timedelta(days=1)
+        start_d = end_d - timedelta(days=3651)
+        with self.assertRaises(HTTPException) as ctx:
+            main.klines(
+                symbol="600519",
+                start=start_d.strftime("%Y%m%d"),
+                end=end_d.strftime("%Y%m%d"),
+                adjust="qfq",
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("10-year maximum", str(ctx.exception.detail))
 
     def test_fundamental_rejects_bad_symbol(self) -> None:
         _assert_400(self, main.fundamental, symbol="x" * 64)
@@ -139,6 +185,24 @@ class EndpointValidationTest(unittest.TestCase):
 
     def test_benchmark_klines_rejects_bad_end(self) -> None:
         _assert_400(self, main.benchmark_klines, index="csi300", start="20230101", end="20990101")
+
+    def test_benchmark_klines_rejects_inverted_date_range(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            main.benchmark_klines(index="csi300", start="20240101", end="20230101")
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("start must be on or before end", str(ctx.exception.detail))
+
+    def test_benchmark_klines_rejects_overlong_date_range(self) -> None:
+        end_d = date.today() + timedelta(days=1)
+        start_d = end_d - timedelta(days=3651)
+        with self.assertRaises(HTTPException) as ctx:
+            main.benchmark_klines(
+                index="csi300",
+                start=start_d.strftime("%Y%m%d"),
+                end=end_d.strftime("%Y%m%d"),
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("10-year maximum", str(ctx.exception.detail))
 
     def test_benchmark_klines_rejects_unknown_index(self) -> None:
         _assert_400(self, main.benchmark_klines, index="nope", start="20230101", end="20240101")
