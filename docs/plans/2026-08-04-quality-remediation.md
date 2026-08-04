@@ -1,481 +1,478 @@
-# 全量质量 remediation 计划
+# 质量 remediation 计划（可执行修订版）
 
-> **For agentic workers:** Load `executing-plans` (2+ tasks). Use fresh implementer subagents per workstream. Then `finishing`. Checkboxes track progress.
+> **For agentic workers:** Load `executing-plans`（2+ tasks）。按 **文件所有权车道** 并行；`main.py` 单车道串行。每任务按符号定位，**禁止依赖本文行号**。完成后 `finishing`。Checkbox 跟踪进度。
+>
+> **修订依据：** 2026-08-04 多 agent 交叉评估（A/C、B/F、D/E、整体裁决）。原「全量」范围过大且依赖图不安全；本版收缩为可并行执行的正确性 / 测试 / 小清理波次。大重构另立计划。
 
-**Goal:** 修复全量代码评估中发现的所有不足，覆盖正确性、代码质量、测试覆盖、安全、部署五个维度。
-**Context:** B-1/B-2/B-3 已在紧急修复中完成（analyst 缓存 key 遮蔽、klines 空结果静默降级、Docker TZ）。本计划处理剩余问题。
-**Constraint:** 每个新增 fallback/兜底逻辑前必须获得用户同意，并配套覆盖失败语义的测试（AGENTS.md 规则）。
-
----
-
-## 已完成（紧急修复）
-
-| 编号 | 问题 | 修复 | 验证 |
-|------|------|------|------|
-| B-1 | `analyst.py:131` 循环变量 `key` 遮蔽缓存 key | 改名为 `field_name` | 38 pyserver + 118 web tests pass |
-| B-2 | `/klines` 和 `/benchmark/klines` 全源失败返回 `200 []` | df=None 时 raise 502；df.empty 时返回 [] 短 TTL 60s | 同上 |
-| B-3 | Docker 容器未设 TZ → UTC 时区偏移 | 两个 Dockerfile + docker-compose.yml 设 `TZ=Asia/Shanghai`，pyserver 安装 tzdata | 同上 |
+**Goal:** 消除仍会伪造或静默降级的数据路径，补齐失败语义测试，并做低风险清理与文档/部署硬化。  
+**Constraint:** 新增 fallback/兜底前须用户同意；失败须显式 `error`/`unavailable`/`warning`（AGENTS.md）。  
+**定位规则:** 用 `def`/`function`/字符串锚点搜索；行号若出现仅作历史参考，实现前必须重新定位。
 
 ---
 
-## Workstream A: pyserver 正确性与数据完整性
+## 已完成（紧急修复，以 `b87b1cc` 为准）
 
-**Agent:** worker (medium complexity)
-**Depends on:** none (与 B/C/D/E/F 可并行)
+| 编号 | 问题 | 实际修复 | 验证 |
+|------|------|----------|------|
+| B-1 | `analyst` 循环变量遮蔽缓存 key | 循环改为 `field_name`；`key = f"analyst:v4:{symbol}"` 不再被覆盖 | pyserver unittest |
+| B-2 | `/klines`、`/benchmark/klines` 全源失败伪装 `200 []` | `df is None` → 502；`df.empty` → `[]`；adapter 区分 failure vs empty；`_empty_bars_ttl(end)`：开放窗 60s / 闭合窗 24h；恢复 `if market == "hk"` 后处理 | `test_klines_empty.py` + suite |
+| B-3 | 容器 TZ | 两 Dockerfile + compose `TZ=Asia/Shanghai`；**pyserver 与 web 均安装 `tzdata`** | 镜像构建配置 |
 
-### Task A1: 修复 `float(... or 0)` 伪造零值字段 (B-4)
-
-**Files:** `pyserver/main.py`
-
-`/spot` 端点在 fallback 路径 (`main.py:1228-1231`) 用 `float(r.get("close", 0) or 0)` 提取字段，当上游 schema drift（列名变更）时会输出 `price: 0.0` 作为成功 quote，无 warning。
-
-- [ ] **Step 1:** 将 `/spot` fallback 路径的 `float(r.get("close", 0) or 0)` 改为先检查字段是否存在：若 `close` 不在 row 中或为 NaN，append warning `"close field missing from upstream row"` 并 `raise HTTPException(502, ...)`。同理处理 `change_pct`、`volume`、`turnover`。
-- [ ] **Step 2:** 对 `/spot` 前段 fallback 路径 (`main.py:1158-1160`) 的 `change_pct: ... or 0` 同样处理：缺失时设为 `None` 并 append warning，不伪造 0。
-- [ ] **Step 3:** 对 `parse_sina_hq_text` (`main.py:751-756`) 的 `涨跌幅: 0` when `prev_close` missing：改为返回 `None` 并让调用方决定 warning。
-- [ ] **Verify:** 新增 `test_spot_fallback.py` 测试：mock 上游返回不含 `close` 列的 DataFrame，断言 502 而非 `price: 0`。
-
-**Commit:** `fix: reject zero-fabricated spot fields on upstream schema drift`
-
-### Task A2: 修复 `_num_or_none` 多数字平均 bug
-
-**Files:** `pyserver/main.py`
-
-`_num_or_none` (`main.py:411-421`) 对字符串中所有数字取平均：`"1,234.5"` → `(1+234.5)/2 = 117.75`，而非解析失败。
-
-- [ ] **Step 1:** 改为只提取第一个匹配的数字：`return float(matches[0])`。若字符串包含多个数字（如逗号分隔），说明格式不符合预期，log warning 并返回第一个。
-- [ ] **Step 2:** 对逗号分隔的大数字（如 `"1,234.5"`），在 regex 前先 `str(value).replace(",", "")` 去除千位分隔符。
-- [ ] **Verify:** 新增 `test_num_or_none.py`：测试 `None`→`None`、`3.14`→`3.14`、`"1,234.5"`→`1234.5`、`"N/A"`→`None`、`""`→`None`、`123`→`123.0`。
-
-**Commit:** `fix: _num_or_none handles comma-separated numbers and single extraction`
-
-### Task A3: provider helpers 吞异常无日志 → 补 log.warning
-
-**Files:** `pyserver/main.py`
-
-8 处 provider helper 用 `except Exception: df = None` / `return None` 吞异常且无日志 (`main.py:480`, `495`, `637`, `706`, `789`, `808`, `841`, `872`, `915`)。持续 AkShare 宕机不留任何服务端证据。
-
-- [ ] **Step 1:** 在每个 `except Exception:` 块内加 `log.warning("provider %s failed: %s", fn_name, e)`（不含 URL/token，只记函数名和异常类型+消息）。
-- [ ] **Step 2:** 不要改变返回值行为（仍返回 None），只补日志。
-- [ ] **Verify:** 手动验证：mock 一个 provider 抛异常，确认 log.warning 被调用。新增测试断言日志输出。
-
-**Commit:** `fix: log provider failures instead of silently swallowing`
-
-### Task A4: 上游异常原文转发到 client warnings → 擦洗
-
-**Files:** `pyserver/main.py`, `pyserver/analyst.py`
-
-4 处将 Tushare 异常原文放入 `warnings` 列表 (`main.py:285`, `1113`; `analyst.py:124`, `178`)。
-
-- [ ] **Step 1:** 将 `f"tushare XXX unavailable: {e}"` 改为 `f"tushare XXX unavailable: {type(e).__name__}"`（只暴露异常类型，不暴露消息体）。
-- [ ] **Step 2:** 完整异常消息用 `log.exception(...)` 记录到服务端日志。
-- [ ] **Verify:** grep 确认无 `f"...{e}"` 在 warnings 路径。新增测试断言 warnings 不含 URL/path。
-
-**Commit:** `fix: scrub upstream exception details from client-facing warnings`
-
-### Task A5: `/fundamental` 非实时价格无 warning → 补齐
-
-**Files:** `pyserver/main.py`
-
-`/fundamental` 从 `stock_value_em` 复制 `latest_close`/`latest_date`/`change_pct` (`main.py:1061-1064`)，可能数日旧，无 "not realtime" warning。`/analyst` 和 `/spot` 对同一来源已加 warning。
-
-- [ ] **Step 1:** 在 `/fundamental` 从 `stock_value_em` 取 `latest_close` 时，若来源不是实时 spot，append warning `"latest_close is from AkShare stock_value_em, may not be realtime"`。
-- [ ] **Step 2:** 利用已有的 `field_sources` 判断来源；若 `latest_close` 的 `field_sources` 不是实时 spot 源，加 warning。
-- [ ] **Verify:** 新增 TestClient 测试：mock `/fundamental` 返回 stock_value_em 来源，断言 warnings 包含 "not realtime"。
-
-**Commit:** `fix: warn when fundamental latest_close is not realtime`
-
-### Task A6: `_with_retries` 最终失败后多余 sleep
-
-**Files:** `pyserver/main.py`
-
-`_with_retries` (`main.py:205-214`) 在最后一次尝试失败后仍执行 `time.sleep(base_delay * (2 ** i))`，浪费 2-4 秒才 raise。
-
-- [ ] **Step 1:** 在 except 块内加 `if i < attempts - 1: time.sleep(...)` 条件，最后一次失败不 sleep 直接 raise。
-- [ ] **Verify:** 新增测试：mock fn 恋抛异常，attempts=3，断言总耗时 < base_delay*(1+2) + 1s（不含最后一次 sleep）。
-
-**Commit:** `fix: skip sleep after final retry attempt`
-
-### Task A7: `/klines` 请求窗口无上限
-
-**Files:** `pyserver/validation.py`
-
-`_validate_date` 允许 1990-01-01 至明日 (`validation.py:32`, `68-71`)，无 span cap。单个请求可触发 35 年回测拉取。
-
-- [ ] **Step 1:** 在 `/klines` 和 `/benchmark/klines` handler 中，若 `end - start > 3650 天`（10 年），raise 400 `"date range exceeds 10-year maximum"`。
-- [ ] **Step 2:** 不修改 `_validate_date` 本身（其他端点可能需要长窗口），在 handler 层加 cap。
-- [ ] **Verify:** 新增测试：start=19900101, end=today → 400。
-
-**Commit:** `fix: cap klines request window to 10 years`
-
-### Task A8: `/spot` 缺少 response_model (Pydantic)
-
-**Files:** `pyserver/main.py`
-
-`/spot` (`main.py:1129`) 返回 bare dict 无 Pydantic model，是最多分支的 payload 却无输出契约。`revenue_yoy` 死字段正是因此未被察觉。
-
-- [ ] **Step 1:** 定义 `class Spot(BaseModel)` 含 `symbol, name, price, change_pct, volume, turnover, source, fetched_at, warnings`。
-- [ ] **Step 2:** 给 `/spot` 加 `response_model=Spot`。
-- [ ] **Step 3:** 同步更新 `web/lib/pyserver.ts` 的 Spot 类型（若需要）。
-- [ ] **Verify:** TestClient 测试 `/spot` 返回符合 Spot model。
-
-**Commit:** `fix: add Spot Pydantic model for /spot response contract`
+当前静态测试规模约 **46 pyserver / 118 web**（以 `unittest discover` / `npm test` 为准）。
 
 ---
 
-## Workstream B: pyserver 架构与代码质量
+## 明确移出本计划（另立文档后再做）
 
-**Agent:** worker (medium complexity)
-**Depends on:** A 完成（避免 merge conflict）
+| 原任务 | 理由 | 后续计划建议 |
+|--------|------|----------------|
+| B1 拆分 `main.py`、B2 大块去重、B7 拆 analyst 循环依赖 | 高风险边界重构；与正确性任务抢 `main.py`；B1 须同步改 CI `import` 清单 | `docs/plans/…-pyserver-modularize.md` |
+| D1 拆 `deepseek.ts`、D2 泛型评分编排 | import fan-out 大；D2 易过度抽象 | `docs/plans/…-web-llm-modularize.md` |
+| F1 README 脚本引用 | 前提错误：`scripts/monitor-dashboard.sh` 与 `scripts/macos/README.md` 均存在 | —（删除） |
 
-### Task B1: 拆分 main.py god-file
+---
 
-**Files:** `pyserver/main.py` → 拆出 `pyserver/providers.py`, `pyserver/models.py`, `pyserver/spot.py`
+## 执行车道与依赖（对齐后）
 
-main.py 1336 行持有 3 个 provider adapter、4 个 Pydantic 模型、token bucket、retry 逻辑、4 个路由处理器。
+```
+Wave 1（可并行，按文件所有权）
+  车道 a — pyserver/main.py + analyst.py（单 implementer 串行）:
+      P0-1 → P0-2 → A1(+web) → A2 → A3 → A4 → A5 → A6
+  车道 b — validation / handler 日期语义:  A7
+  车道 c — 新建 pyserver 测试文件:       C3, C4, C5a（与 A 无文件冲突的部分）
+  车道 d — web/lib 行为修复:             D3 → D4 → D5
+  车道 e — docs / docker ignore / B6 准备: F2, F3
 
-- [ ] **Step 1:** 提取 Pydantic 模型 (`Kline`, `Fundamental`, `Analyst`, `Spot`) 到 `pyserver/models.py`。
-- [ ] **Step 2:** 提取 provider adapters (`_ak_a_hist_df`, `_baostock_hist_df`, `_ak_a_spot`, `_sina_a_spot_rows`, `_ak_stock_value_row` 等) 到 `pyserver/providers.py`。
-- [ ] **Step 3:** 提取 `/spot` handler 到 `pyserver/spot.py`（类似 analyst.py 的模式）。
-- [ ] **Step 4:** main.py 只保留 app 创建、路由注册、bootstrap/proxy/env 处理。
-- [ ] **Step 5:** 更新 `pyserver/Dockerfile` 的 `COPY` 行包含新文件。
-- [ ] **Step 6:** 移除 `main.py:85-93` 和 `:396-402` 的 test-only re-exports，改为测试直接 import 新模块。
-- [ ] **Verify:** `uv run python -c "import main; print('OK')"` + 全部测试通过 + Docker build 通过。
+Wave 2（依赖 Wave 1 相关交付）
+  A8 Spot model（依赖 A1 字段契约）
+  B4 缓存 key（依赖 A1 稳定 spot；与 C1 同波）
+  B5 prune 排序（不含后台线程）
+  B6 非 root（含 compose/写目录）
+  C1 缓存命中（依赖 B4）
+  C2 TestClient 集成（契约已稳定）
+  C5b spot warnings / env hygiene（依赖 A1/B3 决策落地）
+  B3 精简死代码（A/D 落地后，避免抢文件）
+  E* 仅补 D 未覆盖的边界（不重复 D 的测试 commit）
+  NEW-U universe `updated_at` 不变量测试
 
-**Commit:** `refactor: extract models, providers, and spot handler from main.py`
+Wave 3 — 另立计划
+  pyserver modularize / web llm modularize
+```
 
-### Task B2: 消除重复代码
+**Commit 风格:** 与近期历史一致——祈使句、无 `fix:`/`refactor:` 前缀；每车道每 2–4 个相关任务可合并为一个 commit，不必一 task 一 commit。
 
-**Files:** `pyserver/main.py` (or 拆分后的 providers.py)
+---
 
-- [ ] **Step 1:** `trade_date`→rows 转换块 (`main.py:1008-1021` ≡ `1295-1308`) 提取为 `_rows_from_trade_date(df)` helper。
-- [ ] **Step 2:** 中列名 rename map 出现 3 次 (`_AK_HIST_RENAME` at `452`, inline at `999-1002`, inline at `1205-1210`)：统一引用 `_AK_HIST_RENAME`。
-- [ ] **Step 3:** `NEGATIVE_CACHE` get/check/put 前导代码重复 4 次 (`585-590`, `624-629`, `685-690`, `770-775`)：提取为 `_negative_cache_check(key) -> dict | None` 和 `_negative_cache_put(key, ttl)` helpers。
-- [ ] **Verify:** 测试通过 + grep 确认无重复块。
+## Wave 1 — P0 / 正确性
 
-**Commit:** `refactor: deduplicate row conversion, rename maps, and negative-cache preamble`
+### Task P0-1: 空帧不得短路次级行情源
 
-### Task B3: 清理死代码
+**Depends on:** none  
+**Priority:** P0  
+**Files:** `pyserver/main.py`（`klines` A-share 降级链、`_ak_a_hist_df` 契约说明）
 
-**Files:** `pyserver/main.py`, `web/lib/deepseek.ts`, `web/lib/scoring/rules.ts`
+**问题:** `_ak_a_hist_df` 成功返回空 `DataFrame` 时，`klines` 见 `df is not None` 即跳过 baostock/tushare，把「东财空窗 / 限流空帧」与「全市场确认无 K 线」混为一谈（静默降级残留）。
 
-- [ ] **Step 1:** 删除 `_hk_daily` (`main.py:217-220`) 和 `_HK_DAILY_LIMITER`（从未调用）。
-- [ ] **Step 2:** 删除 `_requests_get_no_proxy` (`main.py:145`)（`_market_http_get` 的 pass-through 别名）。
-- [ ] **Step 3:** `_spot_warnings_from_row` (`main.py:818-819`)：要么实现真正的 warning 逻辑，要么删除并更新 `test_spot_fallback.py` 的断言。
-- [ ] **Step 4:** `_sina_hq_list_id(market, code)` (`main.py:730`)：删除忽略的 `market` 参数或修正调用。
-- [ ] **Step 5:** `Fundamental.revenue_yoy` (`main.py:338`)：删除字段 + 同步 `web/lib/pyserver.ts:26`。
-- [ ] **Step 6:** `STRICT_LIVE_DATA` (`main.py:76`)：若仅 bootstrap 断言引用，内联或删除。
-- [ ] **Step 7:** `web/lib/deepseek.ts`: 删除 `scoreSymbolsLlm` 导出 (`:601`)、`totalWeight || 1` 死分支 (`backtest.ts:337`)。
-- [ ] **Step 8:** `web/lib/scoring/rules.ts`: 删除 `rankByRules` 别名 (`:106`) + 更新测试。
-- [ ] **Step 9:** `web/lib/backtest.ts`: 删除 `BenchmarkResult` root 的 `excessReturnPct` (`:152`)，只保留 `stats.excessReturnPct`。
-- [ ] **Verify:** tsc + 全部测试通过。
+- [ ] **Step 1:** 在 `klines` A-share 路径：仅当当前源为 **failure (`None`)** 时才尝试下一源；**empty DF 继续尝试次级源**；仅当所有已尝试源均为 empty（无一 `None` 失败且无一有数据）时才 `200 []`；若存在 failure 且无任何有数据结果 → 502。
+- [ ] **Step 2:** 用简短注释写清三态：`None`=该源失败，`empty`=该源确认无行，`rows`=有数据。不要引入完整 Bars/NoData/Failed 类型系统（留给 modularize 计划）。
+- [ ] **Verify（file-scoped）:**  
+  `uv run python -m unittest test_klines_empty -v`  
+  新增用例：mock `_ak_a_hist_df`→empty、`_baostock_hist_df`→非空 → 响应有 bars；  
+  mock 全 empty → `[]`；mock 全 `None` → 502。
 
-**Commit:** `refactor: remove dead code across pyserver and web`
+**Suggested commit subject:** `Try secondary kline sources after empty primary frames`
+
+---
+
+### Task P0-2: 开放窗 empty TTL 退避
+
+**Depends on:** P0-1（同文件，串行）  
+**Priority:** P0  
+**Files:** `pyserver/main.py`（`_empty_bars_ttl`）、`pyserver/test_klines_empty.py`
+
+**问题:** 开放窗固定 60s 在全池 signals 下可能惊群打上游。
+
+- [ ] **Step 1:** 为开放窗 empty 结果增加退避或更长下限（例如首次 60s、同 key 连续 empty 递增至上限，或直接将开放窗下限提高到可接受值——**实现前在 brief 中写死选定策略，默认：开放窗 TTL=300s，闭合窗保持 24h**；若改退避结构需用户点头）。
+- [ ] **Step 2:** 更新 `EmptyBarsTtlTest`。
+- [ ] **Verify:** `uv run python -m unittest test_klines_empty.EmptyBarsTtlTest -v`
+
+**Suggested commit subject:** `Raise open-window empty kline cache TTL to curb stampede`
+
+---
+
+### Task A7: 日期窗口校验（含 start≤end）
+
+**Depends on:** none（可与车道 a 并行；若改 `klines`/`benchmark_klines` handler 则与 a 错开或并入 a）  
+**Priority:** P0（`start≤end`）/ P1（10 年 cap）  
+**Files:** `pyserver/main.py` 或 `pyserver/validation.py`、新建/扩展测试
+
+- [ ] **Step 1:** `/klines` 与 `/benchmark/klines`：`start > end` → 400，文案明确，**不得**落到 `200 []`。
+- [ ] **Step 2:** `end - start > 3650` 天 → 400（10 年 cap；不改 `_validate_date` 全局上下界）。
+- [ ] **Verify:** 针对本任务测试模块：`start>end`→400；超长窗→400。
+
+**Suggested commit subject:** `Reject inverted and overlong kline date ranges`
+
+---
+
+### Task A1: 拒绝 Spot 伪零值 + web 可空契约
+
+**Depends on:** P0-1, P0-2（同 `main.py` 串行）  
+**Priority:** P0  
+**Files:** `pyserver/main.py`（`spot`、`parse_sina_hq_text` 及所有 `or 0` 报价路径）、`web/lib/pyserver.ts`、相关 web 消费点、`pyserver/test_spot_fallback.py`（扩展）
+
+**契约（先锁定再改）：**
+- `price` 缺失 / NaN → **502**（不可合成 0）
+- `change_pct` / `volume` / `turnover` 缺失 → **`null` + warning**（不伪造 0）；web `Spot.change_pct` 改为 `number | null`
+- `parse_sina_hq_text`：`prev_close` 缺失时涨跌幅为 `None`；**同一任务内**改调用方发 warning，禁止只改一半
+
+- [ ] **Step 1:** 扫全部 spot 相关 `float(... or 0)` / 默认 0（含 realtime、Sina、stock_value_em、history、HK/Tushare 末端），按契约处理。
+- [ ] **Step 2:** 更新 `web/lib/pyserver.ts` 的 `Spot` 与所有把 `change_pct` 当必有 number 的调用点；`tsc --noEmit`。
+- [ ] **Step 3:** 测试：缺 `close` → 502；缺 `change_pct` → 200 + warning + `null`（非 0）。
+- [ ] **Verify:**  
+  `uv run python -m unittest test_spot_fallback -v`  
+  `cd web && ./node_modules/.bin/tsc --noEmit`
+
+**Suggested commit subject:** `Reject fabricated zero spot fields and nullable change_pct`
+
+---
+
+### Task A2: `_num_or_none` 安全解析
+
+**Depends on:** A1（同文件）  
+**Priority:** P0  
+**Files:** `pyserver/main.py`（`_num_or_none`）、`pyserver/test_num_or_none.py`（new）
+
+- [ ] **Step 1:** 去千分位逗号后再匹配数字。
+- [ ] **Step 2:** **仅当恰好一个数字**时返回 `float`；0 个或多个 → `None` + `log.warning`（禁止「多数字取第一个」的静默截断）。
+- [ ] **Verify:** `uv run python -m unittest test_num_or_none -v`  
+  cases: `None`→`None`、`3.14`→`3.14`、`"1,234.5"`→`1234.5`、`"N/A"`→`None`、`""`→`None`、`123`→`123.0`、`"12.3 (was 45.6)"`→`None`
+
+**Suggested commit subject:** `Parse numeric strings without averaging or silent truncation`
+
+---
+
+### Task A3: provider 失败打日志
+
+**Depends on:** A2  
+**Priority:** P1  
+**Files:** `pyserver/main.py`（各 `except Exception` 后置 `df = None` / `return None` 的 provider helper）
+
+- [ ] **Step 1:** 在吞异常处加 `log.warning("provider %s failed: %s", name, e)`（无 URL/token）。
+- [ ] **Step 2:** 不改变返回值语义。
+- [ ] **Verify:** 针对本行为的单测（mock 抛错断言 `log.warning` 被调用），勿用全库主观 grep 门禁。
+
+**Suggested commit subject:** `Log swallowed provider exceptions in pyserver helpers`
+
+---
+
+### Task A4: 擦洗 client-facing warnings 中的异常原文
+
+**Depends on:** A3  
+**Priority:** P1  
+**Files:** `pyserver/main.py`、`pyserver/analyst.py`
+
+- [ ] **Step 1:** warnings 只含 `type(e).__name__`；完整异常 `log.exception`。
+- [ ] **Verify:** 本任务测试断言 warnings 不含 URL/path；允许在测试文件内检查相关调用点。
+
+**Suggested commit subject:** `Scrub upstream exception text from client warnings`
+
+---
+
+### Task A5: `/fundamental` 非实时价格 warning
+
+**Depends on:** A4  
+**Priority:** P1  
+**Files:** `pyserver/main.py`（`fundamental`）、对应测试
+
+- [ ] **Step 1:** 从 `stock_value_em` 填 `latest_close` 时 append 与 analyst 同语义的非实时 warning。
+- [ ] **Verify:** 单测 mock 该来源，断言 warnings 含非实时说明。
+
+**Suggested commit subject:** `Warn when fundamental latest_close is not realtime`
+
+---
+
+### Task A6: `_with_retries` 末次失败不 sleep
+
+**Depends on:** A5  
+**Priority:** P2  
+**Files:** `pyserver/main.py`（`_with_retries`）、单元测试
+
+- [ ] **Step 1:** `if i < attempts - 1: sleep(...)`。
+- [ ] **Verify:** 用 mock 时钟或记录 sleep 调用次数，避免 CI 墙钟 flaky。
+
+**Suggested commit subject:** `Skip backoff sleep after final retry attempt`
+
+---
+
+## Wave 1 — Web / LLM
+
+### Task D3: confidence/size 严格校验
+
+**Depends on:** none  
+**Priority:** P0  
+**Files:** `web/lib/deepseek.ts`（及拆分后仍存放 validation 处）、`web/test/deepseek.test.ts`；若改 mock 错误串则触及 `isStrictLlmOutputError`
+
+- [ ] **Step 1:** 去掉对 confidence/size 的 `clamp01` 静默截断；非法值 throw，前缀纳入现有 strict-error 识别（例如与 `LLM signal` / portfolio 前缀一致），以便 strict repair 或明确失败——**二选一写进实现 brief：默认「识别为 strict error 并 repair 一次」；须更新 `isStrictLlmOutputError`，否则不会多一次修复调用。**
+- [ ] **Step 2:** 替换现有「clamp 到边界」测试为拒绝/repair 测试。
+- [ ] **Verify:** `cd web && npm test -- --test-name-pattern='deepseek|confidence|size'`（或项目等价过滤）+ `tsc --noEmit`；若改 mock provider，加跑 `npm run test:e2e`（若存在）。
+
+**Suggested commit subject:** `Reject out-of-range LLM confidence and size`
+
+---
+
+### Task D4: backtest stats 防护
+
+**Depends on:** D3（可放宽为 none，若无文件冲突）  
+**Priority:** P2  
+**Files:** `web/lib/backtest.ts`、`web/test/backtest.test.ts`
+
+- [ ] **Step 1:** 对可达路径加 guard（优先经 `runBacktest` / 已导出 API 测；**勿仅为测试扩大 public export**）。
+- [ ] **Verify:** `cd web && npm test` 中 backtest 相关文件。
+
+**Suggested commit subject:** `Guard backtest stats against empty or non-positive equity`
+
+---
+
+### Task D5: mock portfolio 一致性
+
+**Depends on:** D3  
+**Priority:** P2  
+**Files:** mock provider 所在模块、`web/test/llm-mock.test.ts`（或现有 mock 测试）
+
+- [ ] **Step 1:** mock 填非空 evidence/risks，文案标明 mock/不可实盘（禁止伪装真实研究证据）。
+- [ ] **Step 2:** ~~不要~~把 evidence/risks 改成 optional 来绕过校验。
+- [ ] **Verify:** mock 相关单测；触及 e2e mock 则跑 e2e。
+
+**Suggested commit subject:** `Fill mock portfolio evidence and risks explicitly`
+
+---
+
+## Wave 1 — 文档 / 杂项
+
+### Task F2: 文档化 same-day close-to-close
+
+**Depends on:** none  
+**Priority:** P2  
+**Files:** `README.md`、`docs/RESEARCH_WORKFLOW.md`
+
+- [ ] **Step 1:** 声明信号与成交均用当日收盘、不建模盘中路径，及对动量策略可能偏乐观。
+- [ ] **Verify:** 人工读一遍相关段落。
+
+---
+
+### Task F3: `pyserver/.dockerignore`
+
+**Depends on:** none  
+**Priority:** P2  
+**Files:** create `pyserver/.dockerignore`
+
+- [ ] **Step 1:** 忽略 `.env`、`cache.db*`、`__pycache__/`、`.venv/`、`test_*.py`、`*.pyc` 等。
+- [ ] **Verify:** `docker build -f pyserver/Dockerfile pyserver` 成功。
+
+---
+
+## Wave 1 — 测试（新文件，可并行）
+
+### Task C3: helper 单元测试
+
+**Depends on:** none（A2 的 `_num_or_none` 期望以 A2 完成后为准；可先写 `_to_ts_code` / TTL / `_source_summary`）  
+**Priority:** P1  
+**Files:** create `pyserver/test_unit_helpers.py`
+
+- [ ] **Step 1:** `_to_ts_code` 别名矩阵（计划原列表）。
+- [ ] **Step 2:** `seconds_until_next_trading_close` 用 mock `datetime.now`（注明当前实现按日历日非交易日历）。
+- [ ] **Step 3:** `_source_summary` 分支。
+- [ ] **Verify:** `uv run python -m unittest test_unit_helpers -v`
+
+---
+
+### Task C4: BaoStock 路径（契约对齐 B-2）
+
+**Depends on:** none  
+**Priority:** P0  
+**Files:** create `pyserver/test_baostock.py`
+
+- [ ] **Step 1:** 正常数据 → DF + logout。
+- [ ] **Step 2:** `error_code != "0"` → **`None`** + logout。
+- [ ] **Step 3:** 空数据 / 全无效行 → **`empty DataFrame`（不是 None）** + logout。
+- [ ] **Step 4:** `_baostock_growth_yoy` 路径冒烟。
+- [ ] **Verify:** `uv run python -m unittest test_baostock -v`
+
+---
+
+### Task C5a: bootstrap 测试 hygiene
+
+**Depends on:** none  
+**Priority:** P1  
+**Files:** `pyserver/test_tushare_bootstrap.py`
+
+- [ ] **Step 1:** `patch.dict(os.environ, …)` 恢复环境。
+- [ ] **Step 2:** 用 tempfile DB，不用 `:memory:` 静默禁用缓存。
+- [ ] **Verify:** `uv run python -m unittest test_tushare_bootstrap -v`
+
+---
+
+## Wave 2
+
+### Task A8: Spot response_model
+
+**Depends on:** A1  
+**Priority:** P1  
+**Files:** `pyserver/main.py`（或后续 models 模块）、`web/lib/pyserver.ts`
+
+- [ ] **Step 1:** `class Spot(BaseModel)` 与 A1 可空字段一致。
+- [ ] **Step 2:** `/spot` 挂 `response_model=Spot`。
+- [ ] **Verify:** 单测或 TestClient 断言 schema；`tsc --noEmit`。
+
+---
 
 ### Task B4: 缓存 key 规范化
 
-**Files:** `pyserver/main.py`, `pyserver/analyst.py`
+**Depends on:** A1（spot 稳定）  
+**Priority:** P1  
+**Files:** `pyserver/main.py`、`pyserver/analyst.py`、缓存命中测试
 
-标的别名（`600519`, `sh600519`, `600519.SH`, `600519.sh`, `SH600519`）产生 5 个缓存 key/股票。
+**注意:** fundamental/spot/analyst 缓存 payload 含原始 `symbol`。规范化 key 后须在命中时 **重写响应该次请求的 `symbol`**，或仅先规范化 klines（响应无 symbol）。
 
-- [ ] **Step 1:** 在所有 `cache_put`/`cache_get` 调用处，用规范化后的 `ts_code` 构造 key，而非原始输入 `symbol`。
-- [ ] **Step 2:** 具体位置：`klines` key (`main.py:945`)、`fundamental` key (`:1032`)、`spot` key (`:1133`)、`analyst` key (`analyst.py:50`)、`benchmark` key（已用 index，不需要改）。
-- [ ] **Step 3:** 保留原始 `symbol` 在响应中（客户端看到的是请求时的格式）。
-- [ ] **Verify:** 新增测试：分别用 `600519` 和 `sh600519` 请求 `/klines`，第二次应命中缓存。
-
-**Commit:** `fix: normalize cache keys to ts_code to avoid duplicate upstream hits`
-
-### Task B5: 缓存 prune 改进
-
-**Files:** `pyserver/cache.py`
-
-- [ ] **Step 1:** prune 的 eviction 策略改为优先 evict 过期行 + TTL 最短的行，而非纯 `fetched_at ASC`（当前会 evict 新写入的 24h fundamental 行而保留旧的 30s spot 行）。
-- [ ] **Step 2:** 改为 `ORDER BY fetched_at + ttl_seconds ASC LIMIT ?`（最近过期的优先 evict）。
-- [ ] **Step 3:** `cache_prune` 从请求线程移到后台线程：在 `_init_db()` 后启动一个 daemon thread，每 `_PRUNE_INTERVAL_S` 秒执行一次 `cache_prune()`，`cache_put` 中只更新 `_last_prune_at` 不再同步调用。
-- [ ] **Verify:** `test_cache_concurrency.py` 通过 + 新增测试验证 prune 优先 evict 过期行。
-
-**Commit:** `fix: improve cache prune eviction policy and move to background thread`
-
-### Task B6: 容器非 root 运行
-
-**Files:** `pyserver/Dockerfile`, `web/Dockerfile`
-
-- [ ] **Step 1:** pyserver Dockerfile：在 `RUN pip install ...` 后加 `RUN useradd -r -u 1001 app && chown -R app /app`，在 `CMD` 前加 `USER app`。
-- [ ] **Step 2:** web Dockerfile：在 runner stage 加 `RUN groupadd -r app && useradd -r -u 1001 -g app app && chown -R app /app`，加 `USER app`。注意 `next start` 需要 `.next/` 目录可读 + `.cache/` volume 可写。
-- [ ] **Step 3:** docker-compose.yml 的 volume 挂载目录权限：在 README/runbook 中说明首次需 `chown -R 1001 private/ web-cache/`。
-- [ ] **Verify:** `docker build` 成功 + `docker run --rm ... id` 输出 `uid=1001`。
-
-**Commit:** `fix: run containers as non-root user`
-
-### Task B7: 修复 analyst.py 循环依赖
-
-**Files:** `pyserver/analyst.py`, `pyserver/main.py` (or 拆分后的 providers.py)
-
-`analyst.py:29-43` 在请求路径内做 20 个名字的延迟 import。
-
-- [ ] **Step 1:** 将被 analyst.py 依赖的 helper 函数（`_to_ts_code`, `_validate_symbol`, `_ak_a_spot`, `_num_or_none` 等）移到 `pyserver/providers.py` 或 `pyserver/utils.py`，使 analyst.py 可以在模块顶层 import。
-- [ ] **Step 2:** 移除 analyst.py 内的 `from main import (...)` 延迟 import，改为顶层 `from providers import ...`。
-- [ ] **Step 3:** 保留 `MOCK_MODE` / `MARKET_ENABLE_TUSHARE_SECONDARY` 的延迟读取（这些是运行时 env，可能被 main.py 重赋值），或改为函数调用 `from config import is_mock_mode, is_tushare_secondary`。
-- [ ] **Verify:** `uv run python -c "import analyst; analyst.analyst('600519')"` 不报循环 import。
-
-**Commit:** `refactor: break analyst.py circular dependency with top-level imports`
+- [ ] **Step 1:** 选定策略（推荐：canonical key + 返回前覆盖 `symbol`）。
+- [ ] **Step 2:** klines/fundamental/spot/analyst 按策略改；benchmark 已用 index 可不动。
+- [ ] **Verify:** 别名两次请求上游只打一次 + 响应 symbol 等于当次请求。
 
 ---
 
-## Workstream C: pyserver 测试覆盖
+### Task B5: cache prune 排序（不含后台线程）
 
-**Agent:** worker (medium complexity)
-**Depends on:** A 完成（测试新行为需要修复先行）
+**Depends on:** none  
+**Priority:** P1  
+**Files:** `pyserver/cache.py`、`pyserver/test_cache.py` / concurrency 测试
 
-### Task C1: 缓存命中测试
-
-**Files:** `pyserver/test_cache_hit.py` (new)
-
-无任何端点的缓存命中测试——B-1 正因此存活。
-
-- [ ] **Step 1:** 使用 `TestClient`（`fastapi.testclient`）测试 `/analyst`：mock provider 返回数据，调用两次，第二次断言上游 mock 只被调用一次（缓存命中）。
-- [ ] **Step 2:** 同理测试 `/klines`、`/fundamental`、`/spot`、`/benchmark/klines`。
-- [ ] **Step 3:** 测试缓存 key 规范化：用 `600519` 和 `sh600519` 各请求一次 `/klines`，断言上游只被调用一次。
-- [ ] **Verify:** `uv run python -m unittest test_cache_hit -v` 通过。
-
-**Commit:** `test: add cache hit tests for all endpoints`
-
-### Task C2: TestClient 集成测试
-
-**Files:** `pyserver/test_endpoints.py` (new)
-
-所有端点测试直接调 handler 函数，只断言 400。无成功 payload、warning payload、空结果 vs 错误语义测试。
-
-- [ ] **Step 1:** 用 `TestClient` 测试 `/klines` 成功返回 Kline 列表（mock akshare 返回 DataFrame）。
-- [ ] **Step 2:** 测试 `/klines` 全源失败返回 502（B-2 修复后的新行为）。
-- [ ] **Step 3:** 测试 `/klines` 空窗口返回 `200 []` + 60s TTL（genuine empty）。
-- [ ] **Step 4:** 测试 `/fundamental` 502 on missing pe/pb/market_cap（`main.py:1121` 规则）。
-- [ ] **Step 5:** 测试 `/spot` fallback ladder：Eastmoney OK → stock_value_em + warning → daily close + warning → 502。
-- [ ] **Step 6:** 测试 `/health` 返回正确字段。
-- [ ] **Verify:** `uv run python -m unittest test_endpoints -v` 通过。
-
-**Commit:** `test: add TestClient integration tests for success, warning, and error paths`
-
-### Task C3: 核心函数单元测试
-
-**Files:** `pyserver/test_unit_helpers.py` (new)
-
-`_to_ts_code`, `_num_or_none`, `seconds_until_next_trading_close`, `_source_summary` 均无测试。
-
-- [ ] **Step 1:** `_to_ts_code`: 测试 `600519`→`600519.SH`、`000858`→`000858.SZ`、`300750`→`300750.SZ`、`688981`→`688981.SH`、`830799`→`830799.BJ`、`hk00700`→`00700.HK`、`SH600519`→`600519.SH`。
-- [ ] **Step 2:** `_num_or_none`: 覆盖 Task A2 的全部 case。
-- [ ] **Step 3:** `seconds_until_next_trading_close`: mock `datetime.now()` 测试盘中、盘后、周末的 TTL 值。
-- [ ] **Step 4:** `_source_summary`: 测试 8 个分支的输出字符串。
-- [ ] **Verify:** `uv run python -m unittest test_unit_helpers -v` 通过。
-
-**Commit:** `test: add unit tests for _to_ts_code, _num_or_none, TTL, and source summary`
-
-### Task C4: BaoStock 路径测试
-
-**Files:** `pyserver/test_baostock.py` (new)
-
-`_baostock_hist_df`、`_baostock_growth_yoy` 零测试覆盖，包括 login/logout lock 纪律。
-
-- [ ] **Step 1:** mock `baostock.query_history_k_data_plus` 返回正常 DataFrame，断言 `_baostock_hist_df` 正确转换并 logout。
-- [ ] **Step 2:** mock 返回 `error_code != "0"`，断言返回 None 且 logout 被调用。
-- [ ] **Step 3:** mock 返回空数据，断言返回 None 且 logout 被调用。
-- [ ] **Step 4:** mock `baostock.query_growth_data` 路径测试 `_baostock_growth_yoy`。
-- [ ] **Verify:** `uv run python -m unittest test_baostock -v` 通过。
-
-**Commit:** `test: add BaoStock provider path tests with mocked baostock`
-
-### Task C5: 修复测试 hygiene
-
-**Files:** `pyserver/test_tushare_bootstrap.py`, `pyserver/test_spot_fallback.py`
-
-- [ ] **Step 1:** `test_tushare_bootstrap.py`: 用 `unittest.mock.patch.dict(os.environ, ...)` 替代直接 `os.environ[...] = ...`，确保测试后 env 恢复。
-- [ ] **Step 2:** `test_tushare_bootstrap.py`: 不再用 `PYSERVER_CACHE_DB=:memory:`（会静默禁用缓存），改用 `tempfile.NamedTemporaryFile` 并在 tearDown 中删除。
-- [ ] **Step 3:** `test_spot_fallback.py`: 若 `_spot_warnings_from_row` 被实现（B3 Task），更新断言；若被删除，移除对应测试。
-- [ ] **Step 4:** 新增 negative cache 行为测试：mock provider 失败，断言 sentinel 被写入且短 TTL，第二次调用命中 sentinel 返回 None。
-- [ ] **Verify:** `uv run python -m unittest discover -p "test_*.py"` 全部通过，无 env 泄漏。
-
-**Commit:** `test: fix env leak in tushare bootstrap test and add negative cache test`
+- [ ] **Step 1:** eviction 按 `fetched_at + ttl_seconds ASC`（最早到期优先）。
+- [ ] **Step 2:** **本波不做** daemon 后台 prune（生命周期/测试隔离风险）；另立项。
+- [ ] **Verify:** `uv run python -m unittest test_cache test_cache_concurrency -v` + 新 eviction 用例。
 
 ---
 
-## Workstream D: web/LLM/backtest 代码质量
+### Task B6: 非 root 容器
 
-**Agent:** worker (medium complexity)
-**Depends on:** none (与 A/B/C/E/F 可并行)
+**Depends on:** none（可与 Wave 1 e 并行，但需完整权限方案）  
+**Priority:** P1  
+**Files:** `pyserver/Dockerfile`、`web/Dockerfile`、`docker-compose.yml`、README/runbook
 
-### Task D1: 拆分 deepseek.ts
-
-**Files:** `web/lib/deepseek.ts` → `web/lib/llm/client.ts`, `web/lib/llm/mock.ts`, `web/lib/llm/types.ts`
-
-deepseek.ts 815 行包含 HTTP client、类型定义、system prompts、validation、scoring orchestration、mock provider。
-
-- [ ] **Step 1:** 提取类型定义 (`SymbolSnapshot`, `Signal`, `PortfolioTargetSignal`, `ScoringSnapshot` 等) 到 `web/lib/llm/types.ts`。
-- [ ] **Step 2:** 提取 HTTP client (`chatDetailed`, `chat`, retry 逻辑, error classes) 到 `web/lib/llm/client.ts`。
-- [ ] **Step 3:** 提取 mock provider (`mockSignalFor`, `mockPortfolioTargetFor`, `mockProviderActive`) 到 `web/lib/llm/mock.ts`。
-- [ ] **Step 4:** deepseek.ts 只保留 scoring orchestration + validation + system prompts。
-- [ ] **Step 5:** 更新所有 import 路径。
-- [ ] **Verify:** `tsc --noEmit` + `npm test` 通过。
-
-**Commit:** `refactor: extract llm client, types, and mock from deepseek.ts`
-
-### Task D2: 消除 scoring 函数重复
-
-**Files:** `web/lib/deepseek.ts` (or 拆分后)
-
-`scoreSymbolsBatchLlm` / `scorePortfolioTargetsBatchLlm` ~80 行重复控制流；`scoreSymbols` / `scorePortfolioTargets` ~40 行重复。
-
-- [ ] **Step 1:** 提取共享 `scoreWithRetry<T>(opts: { systemPrompt, userPayload, normalize, model, ... })` 高阶函数，封装 retry + strict repair + batch 循环。
-- [ ] **Step 2:** `scoreSymbolsBatchLlm` 和 `scorePortfolioTargetsBatchLlm` 调用 `scoreWithRetry` 并传入各自的 prompt/normalize/model。
-- [ ] **Step 3:** 同理提取 `scoreOrchestrate<T>(opts: { scorer, unscorable, batchSize, ... })` 统一 `scoreSymbols` / `scorePortfolioTargets`。
-- [ ] **Verify:** `npm test` 通过 + grep 确认无重复控制流。
-
-**Commit:** `refactor: deduplicate LLM scoring orchestration with shared higher-order functions`
-
-### Task D3: 修复 clamp01 严格性不一致
-
-**Files:** `web/lib/deepseek.ts`
-
-`clamp01` 对 confidence/size 静默截断到 [0,1]，而 `strictWeight` 对 targetWeight 严格拒绝越界。
-
-- [ ] **Step 1:** 将 `confidence` 和 `size` 的校验改为与 `strictWeight` 一致：非 number/非 finite/<0/>1 时 throw `LLM returned invalid confidence` 触发 strict repair retry。
-- [ ] **Step 2:** 更新 mock provider 确保 confidence/size 在 [0,1] 内（mock 已在范围内，无需改）。
-- [ ] **Step 3:** 更新 `test/deepseek.test.ts` 新增越界 confidence/size 的拒绝测试。
-- [ ] **Verify:** `npm test` 通过。
-
-**Commit:** `fix: validate confidence and size strictly instead of silent clamping`
-
-### Task D4: 修复 computeStatsFromEquities NaN 风险
-
-**Files:** `web/lib/backtest.ts`
-
-无 empty array / start=0 guard（当前不可达因 min 5 dates，但无防御）。
-
-- [ ] **Step 1:** 在函数入口加 `if (equities.length < 2) throw new Error("need >= 2 equity points")`。
-- [ ] **Step 2:** 在 `totalReturnPct` 计算前加 `if (start <= 0) throw new Error("starting equity must be positive")`。
-- [ ] **Step 3:** `computeBenchmarkResult` 同理加 guard（已有 `first.close <= 0` 检查，补 `equities.length < 2`）。
-- [ ] **Verify:** 新增 `test/backtest.test.ts` 测试：空数组和 start=0 抛 Error。
-
-**Commit:** `fix: guard computeStatsFromEquities against empty array and zero equity`
-
-### Task D5: Mock portfolio target 一致性
-
-**Files:** `web/lib/deepseek.ts` (or `web/lib/llm/mock.ts`)
-
-Mock portfolio targets 有空 evidence/risks 数组，绕过 strict validation。
-
-- [ ] **Step 1:** 在 mock provider 中填充非空 evidence/risks（如 `["mock evidence"]` / `["mock risk"]`），使 mock 输出能通过 strict validation。
-- [ ] **Step 2:** 或者：在 `PortfolioTargetSignal` 类型中将 evidence/risks 改为 optional，strict validation 只在非 mock 路径执行（不推荐，破坏类型安全）。
-- [ ] **Step 3:** 推荐 Step 1：mock 填充占位值。
-- [ ] **Verify:** `npm test` 通过 + mock signal 能通过 `normalizePortfolioSignals`。
-
-**Commit:** `fix: populate mock portfolio target evidence and risks for type consistency`
+- [ ] **Step 1:** 全部 COPY 之后创建 app 用户并 `chown` **实际可写路径**（含 cache-data、`/app/data`、private、`.cache` 挂载点在容器内的预期属主）。
+- [ ] **Step 2:** named volume 初始化方案（不能只靠宿主 `chown private/`）；compose 验证 `docker compose run --rm pyserver id` → uid 1001。
+- [ ] **Step 3:** 文档写明 bind mount UID 与 volume 首次权限。
+- [ ] **Verify:** build + `id` 断言；真实 `compose up` 后 `/health` 与 cache 可写。
 
 ---
 
-## Workstream E: web 测试覆盖
+### Task C1: 端点缓存命中
 
-**Agent:** worker (light complexity)
-**Depends on:** D 完成（测试新行为需要修复先行）
+**Depends on:** B4  
+**Priority:** P1  
+**Files:** create `pyserver/test_cache_hit.py`
 
-### Task E1: 回测边界测试
-
-**Files:** `web/test/backtest.test.ts`
-
-- [ ] **Step 1:** 测试 `computeStatsFromEquities` 空/单元素数组抛 Error（D4 修复后）。
-- [ ] **Step 2:** 测试 `computeStatsFromEquities` start=0 抛 Error。
-- [ ] **Step 3:** 测试 benchmark 无 `dates[0]` bar 时 `computeBenchmarkResult` 返回 undefined（当前行为验证）。
-- [ ] **Step 4:** 测试 `rebalanceEveryNDays=1`（日频调仓）的 T+1 安全性。
-- [ ] **Verify:** `npm test` 通过。
-
-**Commit:** `test: add backtest edge case tests for empty equity and zero start`
-
-### Task E2: LLM 校验严格性测试
-
-**Files:** `web/test/deepseek.test.ts`
-
-- [ ] **Step 1:** 测试越界 confidence (>1, <0, NaN, string) 被 strict validation 拒绝（D3 修复后）。
-- [ ] **Step 2:** 测试越界 size 同理。
-- [ ] **Step 3:** 测试 mock portfolio target 的 evidence/risks 非空（D5 修复后）。
-- [ ] **Step 4:** 测试 `excessReturnPct` 只在 `stats` 下存在，不在 `benchmark` root（B3 Task 后）。
-- [ ] **Verify:** `npm test` 通过。
-
-**Commit:** `test: add LLM validation strictness tests for confidence and size`
+- [ ] **Step 1:** 隔离 tempfile cache DB。
+- [ ] **Step 2:** analyst/klines/fundamental/spot/benchmark 双调用，第二次不打上游。
+- [ ] **Step 3:** 别名 key 命中（与 B4 策略一致）。
+- [ ] **Verify:** `uv run python -m unittest test_cache_hit -v`
 
 ---
 
-## Workstream F: 文档与杂项
+### Task C2: TestClient 集成语义
 
-**Agent:** worker (light complexity)
-**Depends on:** none (与所有 workstream 可并行)
+**Depends on:** P0-1, A1, A7  
+**Priority:** P0  
+**Files:** create `pyserver/test_endpoints.py`
 
-### Task F1: 修复 README 引用
-
-**Files:** `README.md`
-
-- [ ] **Step 1:** 检查 `scripts/macos/README.md` 和 `scripts/monitor-dashboard.sh` 是否存在；若不存在，移除 README 中的引用或创建缺失文件。
-- [ ] **Step 2:** 检查 `scripts/` 目录内容，确保 README "常用命令" 表中的所有脚本路径正确。
-- [ ] **Verify:** `grep -r "monitor-dashboard\|macos/README" README.md` 输出与实际文件一致。
-
-**Commit:** `docs: fix README references to missing scripts`
-
-### Task F2: 文档化回测执行模型
-
-**Files:** `README.md`, `docs/RESEARCH_WORKFLOW.md`
-
-回测使用 same-day close-to-close 执行模型（信号和成交都用当日收盘价），这是方法论选择但需显式声明。
-
-- [ ] **Step 1:** 在 README "严格回测" 描述中加注："信号与成交均使用当日收盘价（same-day close-to-close），不建模盘中路径；此简化可能略微高估动量策略收益。"
-- [ ] **Step 2:** 在 `docs/RESEARCH_WORKFLOW.md` 中补充回测方法论说明。
-- [ ] **Verify:** 人工 review。
-
-**Commit:** `docs: document same-day close-to-close backtest execution model`
-
-### Task F3: pyserver .dockerignore
-
-**Files:** `pyserver/.dockerignore` (new)
-
-web/ 有 .dockerignore，pyserver/ 没有。
-
-- [ ] **Step 1:** 创建 `pyserver/.dockerignore` 忽略 `.env`, `cache.db*`, `__pycache__/`, `.venv/`, `test_*.py`, `*.pyc`。
-- [ ] **Step 2:** 注意：Dockerfile COPY 只拷贝特定文件，但 .dockerignore 可减少 build context 传输。
-- [ ] **Verify:** `docker build` 成功 + build context 体积减小。
-
-**Commit:** `chore: add .dockerignore for pyserver`
+- [ ] **Step 1:** `/klines` 成功列表（mock DF）。
+- [ ] **Step 2:** 全源失败 → 502，且 **不写** 成功空缓存。
+- [ ] **Step 3:** genuine empty → `200 []`，TTL 按 `_empty_bars_ttl`（**不要**写死一律 60s）。
+- [ ] **Step 4:** `/fundamental` 缺 pe/pb/market_cap → 502。
+- [ ] **Step 5:** `/spot` fallback ladder **含 Sina realtime**（Eastmoney → Sina → stock_value_em → history → …）。
+- [ ] **Step 6:** `/health` 字段。
+- [ ] **Verify:** `uv run python -m unittest test_endpoints -v`
 
 ---
 
-## 执行顺序与并行策略
+### Task C5b: spot warnings / negative cache
 
-```
-Phase 1 (紧急): B-1, B-2, B-3  ← 已完成
+**Depends on:** A1（及是否删除/实现 `_spot_warnings_from_row` 的决定）  
+**Priority:** P1  
+**Files:** `pyserver/test_spot_fallback.py`、negative-cache 测试
 
-Phase 2 (并行):
-  ├─ Workstream A (pyserver 正确性)     ← Agent 1
-  ├─ Workstream D (web 代码质量)        ← Agent 2
-  └─ Workstream F (文档与杂项)          ← Agent 3
+- [ ] **Step 1:** 与 A1/B3 精简决策对齐测试断言。
+- [ ] **Step 2:** negative cache：失败写 sentinel、短 TTL、二次命中不伪装成功空业务结论。
+- [ ] **Verify:** 相关 unittest 模块。
 
-Phase 3 (依赖 Phase 2):
-  ├─ Workstream B (pyserver 架构)       ← Agent 1 (依赖 A 完成)
-  ├─ Workstream C (pyserver 测试)       ← Agent 4 (依赖 A 完成)
-  └─ Workstream E (web 测试)            ← Agent 2 (依赖 D 完成)
-```
+---
 
-**每个 Task 完成后：**
-1. 运行对应测试套件（`uv run python -m unittest discover` / `npm test` / `tsc --noEmit`）
-2. 提交独立 commit（遵循 AGENTS.md commit 规范）
-3. 勾选 checkbox
+### Task B3: 精简死代码（收窄）
 
-**全部完成后：**
-1. `cd web && npm test && ./node_modules/.bin/tsc --noEmit`
-2. `cd pyserver && uv run python -m unittest discover -p "test_*.py"`
-3. `docker build` 两个镜像成功
-4. 更新 README（如需要）
+**Depends on:** Wave 1 车道 a/d 完成  
+**Priority:** P1  
+**Files:** 按符号删除/替换（禁止按行号）
+
+**做：**
+- 删除未调用的 `_hk_daily` / `_HK_DAILY_LIMITER`
+- 删除未写入的 `Fundamental.revenue_yoy` + `web/lib/pyserver.ts` 对应字段
+- 删除未使用导出 `scoreSymbolsLlm`（确认无引用）
+- `_requests_get_no_proxy`：**有调用**——改为直接 `_market_http_get`，不要当死代码删
+- `_spot_warnings_from_row`：实现或删除（与 A1/C5b 一致），非「纯死代码」
+- **保留** `STRICT_LIVE_DATA` 启动断言
+- `rankByRules`：若删则同步改 `web/test/scoring.test.ts`
+
+**不做本波：** 与 D1/D2 纠缠的 deepseek 大清理；`excessReturnPct` root 清理可附带小 PR。
+
+- [ ] **Verify:** pyserver unittest + `cd web && npm test && tsc --noEmit`
+
+---
+
+### Task E: 仅补缺口测试
+
+**Depends on:** D3, D4, D5  
+**Priority:** P2  
+
+- [ ] **禁止** 重复 D3/D4/D5 已带的用例。
+- [ ] 仅补：benchmark 无首日 bar 等 D 未覆盖边界；`excessReturnPct` 位置断言若做了 B3 清理则挂在 B3 commit。
+
+---
+
+### Task NEW-U: universe refresh `updated_at` 不变量
+
+**Depends on:** none  
+**Priority:** P1  
+**Files:** `web` 侧 universe refresh 测试（新建或扩展现有）
+
+- [ ] **Step 1:** LLM 空 proposal → 成功且 **不改写** 文件 / 不碰 `updated_at`。
+- [ ] **Step 2:** 真实 add/remove/reclass → 更新 `updated_at`。
+- [ ] **Verify:** 对应 `web/test` 文件 + 必要时 e2e。
+
+---
+
+## 全量完成门禁
+
+1. `cd pyserver && uv run python -m unittest discover -s . -p 'test_*.py' -q`
+2. `cd web && npm test && ./node_modules/.bin/tsc --noEmit`
+3. 两镜像 `docker build`；若做了 B6，再 `compose` 冒烟 `/health`
+4. 勿用仓库级主观 `grep 无重复` 作为唯一 verify
 
 ---
 
 ## 风险与注意事项
 
-1. **B1 Task (拆分 main.py) 是最高风险变更**：可能引入循环 import、Dockerfile COPY 遗漏、测试 import 路径断裂。建议在独立分支上完成，逐步验证。
-2. **B4 Task (缓存 key 规范化) 会改变缓存行为**：已有缓存数据将全部 miss 一次（因为 key 变了），但不影响正确性。
-3. **B6 Task (非 root 运行) 可能影响 volume 权限**：需要文档说明首次部署的 chown 步骤。
-4. **D3 Task (clamp01 改 strict) 可能导致现有 LLM 输出被拒绝**：如果 DeepSeek 当前偶尔返回 >1 的 confidence，改为 strict 会导致 strict repair retry。需评估是否值得多一次 API 调用。
-5. **新增 fallback 逻辑前必须获得用户同意**（AGENTS.md 规则）。本计划中无新增 fallback，所有修复都是"拒绝伪造数据"或"改善日志/测试"方向。
+1. **`main.py` 是单写者车道**——Wave 1 车道 a 内任务必须串行，避免并行 implementer 互踩。
+2. **P0-1 改变降级链行为**——须测试锁定；这是对 B-2 残留静默降级的修补，不是新业务兜底。
+3. **A1 同时改 web 类型**——漏改消费点会在 `tsc` 暴露；verify 必含 tsc。
+4. **D3 必须改 `isStrictLlmOutputError`**——否则「触发 repair」的叙述不成立，只会直接失败（也符合严格模式，但要与 brief 一致）。
+5. **B4 响应 symbol**——规范化 key 时不得把缓存里的旧 symbol 回显给新别名请求。
+6. **B6**——import 期建库/建目录；非 root 必须有可写路径方案，手册 chown 不算 verify。
+7. **本计划不再声称「全量修复」**——未覆盖的 web route 硬化、依赖审计、pyserver mypy/ruff、完整 modularize 见后续计划。
+
+---
+
+## 修订历史
+
+| 日期 | 变更 |
+|------|------|
+| 2026-08-04 | 初版（评估清单式全量计划） |
+| 2026-08-04 | 多 agent 交叉评估后修订：修正已完成表与 B-2 契约、删 F1、外移大重构、重画依赖、P0-1/P0-2/NEW-U、禁行号执行、收窄 B3/B5、对齐 commit 风格 |
