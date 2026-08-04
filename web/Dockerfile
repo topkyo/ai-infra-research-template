@@ -25,6 +25,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/data ./data
 # prestart runs ensure-better-sqlite3 + fix-next-server-chunks
 COPY --from=builder /app/scripts ./scripts
+RUN groupadd --gid 1001 app && \
+    useradd --uid 1001 --gid 1001 --shell /usr/sbin/nologin --no-create-home app && \
+    mkdir -p /app/.cache /app/private && \
+    chown -R app:app /app
+USER app
 EXPOSE 3000
 # node:24-slim has no curl/wget; Node 24 ships global fetch. docker-compose.yml
 # overrides this with the same check — keep both in sync.

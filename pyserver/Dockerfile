@@ -8,6 +8,11 @@ COPY main.py mock_data.py cache.py validation.py analyst.py ./
 # Empty token = free live sources (akshare/baostock); set "mock" only for demos/tests.
 ENV TUSHARE_TOKEN=""
 ENV TZ=Asia/Shanghai
+RUN groupadd --gid 1001 app && \
+    useradd --uid 1001 --gid 1001 --shell /usr/sbin/nologin --no-create-home app && \
+    mkdir -p /app/cache-data && \
+    chown -R app:app /app
+USER app
 EXPOSE 8001
 # python:3.13-slim has no curl/wget; use stdlib urllib. docker-compose.yml
 # overrides this with the same check — keep both in sync.

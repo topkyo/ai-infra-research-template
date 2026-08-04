@@ -95,7 +95,47 @@ web 服务挂载：
 - `./private` → 容器内 `/app/private`（`HOLDINGS_FILE=/app/private/holdings.local.json`，支持持仓原子写）
 - named volume `web-cache` → 容器内 `/app/.cache`（LLM 与回测 SQLite 缓存）
 
-股票池 UI 刷新另需在 `.env` 设置强随机 `UNIVERSE_REFRESH_TOKEN`（≥16 位，与首页令牌一致）；未设置或仍为占位值时接口拒绝。
+pyserver 服务挂载：
+
+- named volume `pyserver-cache` → 容器内 `/app/cache-data`（行情 SQLite 缓存，`PYSERVER_CACHE_DB`）
+
+### 容器用户与挂载权限（uid 1001）
+
+两个镜像均以非 root 用户 `app`（**uid/gid 1001**）运行。可写路径在 Dockerfile 中 `chown` 给该用户；bind mount 与已有 named volume 的宿主机权限需单独对齐。
+
+| 挂载 | 类型 | 容器路径 | 权限说明 |
+|---|---|---|---|
+| `./web/data` | bind | `/app/data` | 股票池刷新需写 `universe.json`；宿主机目录须对 uid **1001** 可写 |
+| `./private` | bind | `/app/private` | 持仓 JSON 原子写；首次部署前创建目录与文件（见下） |
+| `web-cache` | named volume | `/app/.cache` | LLM/回测 SQLite；**首次** `compose up` 时 Docker 从镜像 `/app/.cache`（已 chown 1001）初始化卷 |
+| `pyserver-cache` | named volume | `/app/cache-data` | pyserver SQLite；同上，从镜像 `/app/cache-data` 初始化 |
+
+**Bind mount 首次对齐（VPS 或本机 Compose）：**
+
+```bash
+# 仓库根目录；将 bind mount 目录属主改为容器 uid
+sudo chown -R 1001:1001 web/data private
+```
+
+若暂不能改属主，开发环境可放宽目录权限（生产不推荐）：`chmod -R a+rwX web/data private`。
+
+**Named volume 已存在且属 root 时**（升级自 root 容器后的旧卷）：
+
+```bash
+docker compose run --rm --user root pyserver chown -R app:app /app/cache-data
+docker compose run --rm --user root web chown -R app:app /app/.cache
+```
+
+**验证非 root 与构建：**
+
+```bash
+docker compose build
+docker compose run --rm pyserver id   # 期望 uid=1001(app)
+docker compose run --rm web id        # 期望 uid=1001(app)
+docker compose up -d
+curl -sS http://127.0.0.1:8001/health
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
+```
 
 **首次启动前**必须从示例复制持仓文件，否则真实持仓信号不可用（`/api/signals` 返回 `setup_required`）：
 
@@ -105,6 +145,8 @@ cp web/data/holdings.example.json private/holdings.local.json
 ```
 
 详见 [private/README.md](../private/README.md)。
+
+股票池 UI 刷新另需在 `.env` 设置强随机 `UNIVERSE_REFRESH_TOKEN`（≥16 位，与首页令牌一致）；未设置或仍为占位值时接口拒绝。
 
 启动：
 

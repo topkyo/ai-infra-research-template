@@ -53,7 +53,8 @@ ssh -L 3000:127.0.0.1:3000 goyun
   cp web/data/holdings.example.json private/holdings.local.json
   ```
 - [ ] 编辑 `private/holdings.local.json`（现金、持仓、成本价）；或在私有台 `/signals` 页面保存。
-- [ ] 阅读 [private/README.md](../private/README.md)：`web-cache` 由 Docker named volume 持久化 LLM/回测缓存。
+- [ ] 阅读 [private/README.md](../private/README.md)：`web-cache` / `pyserver-cache` 由 Docker named volume 持久化；bind mount 需 uid **1001** 可写（`sudo chown -R 1001:1001 web/data private`）。
+- [ ] （可选）验证非 root：`docker compose run --rm web id` → `uid=1001(app)`。
 
 ## D. Docker Compose
 
