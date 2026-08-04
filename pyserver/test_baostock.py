@@ -136,7 +136,8 @@ class BaostockGrowthYoyTest(unittest.TestCase):
         query.assert_not_called()
 
     def test_returns_latest_yoy_and_logout(self) -> None:
-        rows = [["2024", "4", "15.5"]]
+        # BaoStock returns YOYNI as a decimal fraction (0.155 == 15.5%); code *100 → percent.
+        rows = [["2024", "4", "0.155"]]
         rs = _MockResultSet(fields=["year", "quarter", "YOYNI"], rows=rows)
         with (
             patch("main.cache_get", return_value=None),
@@ -146,7 +147,7 @@ class BaostockGrowthYoyTest(unittest.TestCase):
             patch("main.bs.query_growth_data", return_value=rs),
         ):
             result = main._baostock_growth_yoy("600519.SH")
-        self.assertAlmostEqual(result, 1550.0)
+        self.assertAlmostEqual(result, 15.5)
         logout.assert_called_once()
         cache_put.assert_called_once()
 
