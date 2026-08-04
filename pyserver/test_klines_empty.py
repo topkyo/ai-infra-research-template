@@ -50,12 +50,36 @@ class AkAHistDfEmptyTest(unittest.TestCase):
 
 
 class KlinesEmptyResultTest(unittest.TestCase):
-    def test_a_share_empty_df_returns_empty_list(self) -> None:
+    def test_a_share_empty_primary_falls_back_to_secondary_bars(self) -> None:
+        bs_df = pd.DataFrame({
+            "date": ["2024-01-02"],
+            "open": [100.0],
+            "high": [101.0],
+            "low": [99.0],
+            "close": [100.5],
+            "volume": [1000.0],
+        })
         with (
             patch.object(main, "MOCK_MODE", False),
             patch("main.cache_get", return_value=None),
             patch("main.cache_put"),
             patch("main._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("main._baostock_hist_df", return_value=bs_df),
+        ):
+            rows = main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["date"], "2024-01-02")
+        self.assertEqual(rows[0]["close"], 100.5)
+
+    def test_a_share_all_empty_returns_empty_list(self) -> None:
+        with (
+            patch.object(main, "MOCK_MODE", False),
+            patch("main.cache_get", return_value=None),
+            patch("main.cache_put"),
+            patch("main._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("main._baostock_hist_df", return_value=pd.DataFrame()),
+            patch.object(main, "_pro", None),
+            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             rows = main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
         self.assertEqual(rows, [])
