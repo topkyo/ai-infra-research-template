@@ -973,10 +973,10 @@ def klines(
     source = ""
     had_failure = False
     df: pd.DataFrame | None = None
-    try:
-        if market == "hk":
-            # akshare for HK — Tushare's hk_daily is capped at 10/day.
-            ak_code = ts_code.split(".")[0]  # "00700"
+    if market == "hk":
+        # akshare for HK — Tushare's hk_daily is capped at 10/day.
+        ak_code = ts_code.split(".")[0]  # "00700"
+        try:
             df = _with_retries(
                 _ak_call,
                 ak.stock_hk_hist,
@@ -986,24 +986,37 @@ def klines(
             source = "akshare_hk_hist"
             if df is None:
                 had_failure = True
-        else:
-            code = _compact_code(ts_code)
-            # Per-source tri-state: None=failure, empty=confirmed no rows, rows=data.
-            # Only None advances the fallback chain; empty still tries secondary sources.
+        except Exception:
+            log.exception("klines HK akshare failed for %s", symbol)
+            had_failure = True
+            df = None
+    else:
+        code = _compact_code(ts_code)
+        # Per-source tri-state: None=failure, empty=confirmed no rows, rows=data.
+        # Only None advances the fallback chain; empty still tries secondary sources.
+        try:
             ak_df = _ak_a_hist_df(code, start, end, adjust or "qfq")
             if ak_df is None:
                 had_failure = True
             elif not ak_df.empty:
                 df = ak_df
                 source = "akshare_a_hist"
-            if df is None:
+        except Exception:
+            log.exception("klines AkShare failed for %s", symbol)
+            had_failure = True
+        if df is None:
+            try:
                 bs_df = _baostock_hist_df(ts_code, start, end, adjust or "qfq")
                 if bs_df is None:
                     had_failure = True
                 elif not bs_df.empty:
                     df = bs_df
                     source = "baostock_history_k"
-            if df is None and _pro is not None and MARKET_ENABLE_TUSHARE_SECONDARY:
+            except Exception:
+                log.exception("klines BaoStock failed for %s", symbol)
+                had_failure = True
+        if df is None and _pro is not None and MARKET_ENABLE_TUSHARE_SECONDARY:
+            try:
                 ts_df = _with_retries(
                     ts.pro_bar,
                     ts_code=ts_code,
@@ -1016,10 +1029,9 @@ def klines(
                 elif not ts_df.empty:
                     df = ts_df
                     source = "tushare_pro_bar"
-    except Exception as e:
-        # Do not leak upstream exception details (URLs, tokens) to clients.
-        log.exception("klines upstream failed for %s", symbol)
-        raise HTTPException(502, "upstream market data error; detail logged server-side") from e
+            except Exception:
+                log.exception("klines Tushare pro_bar failed for %s", symbol)
+                had_failure = True
 
     if df is None and not had_failure:
         # A-share: every source confirmed empty window — not a failure.

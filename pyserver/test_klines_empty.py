@@ -97,6 +97,30 @@ class KlinesEmptyResultTest(unittest.TestCase):
                 main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
         self.assertEqual(ctx.exception.status_code, 502)
 
+    def test_a_share_baostock_raises_falls_back_to_tushare(self) -> None:
+        ts_df = pd.DataFrame({
+            "trade_date": ["20240102"],
+            "open": [100.0],
+            "high": [101.0],
+            "low": [99.0],
+            "close": [100.5],
+            "vol": [1000.0],
+        })
+        with (
+            patch.object(main, "MOCK_MODE", False),
+            patch("main.cache_get", return_value=None),
+            patch("main.cache_put"),
+            patch("main._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("main._baostock_hist_df", side_effect=RuntimeError("baostock login failed")),
+            patch.object(main, "_pro", object()),
+            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch("main._with_retries", return_value=ts_df),
+        ):
+            rows = main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["date"], "2024-01-02")
+        self.assertEqual(rows[0]["close"], 100.5)
+
 
 if __name__ == "__main__":
     unittest.main()
