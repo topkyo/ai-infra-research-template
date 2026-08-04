@@ -369,6 +369,18 @@ class Analyst(BaseModel):
     field_sources: dict[str, str] | None = None
 
 
+class Spot(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    change_pct: float | None = None
+    volume: float | None = None
+    turnover: float | None = None
+    source: str | None = None
+    fetched_at: str | None = None
+    warnings: list[str] | None = None
+
+
 # ---------- symbol normalization -------------------------------------------
 
 
@@ -1223,7 +1235,7 @@ def fundamental(symbol: str):
     return out
 
 
-@app.get("/spot")
+@app.get("/spot", response_model=Spot)
 def spot(symbol: str):
     """Most-recent close (Tushare Pro has no realtime quote). 30s cache."""
     symbol = _validate_symbol(symbol)

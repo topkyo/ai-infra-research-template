@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 import cache as cache_mod
 from main import (
+    Spot,
     _QUOTE_SOURCE_KEY,
     _ak_a_spot,
     _spot_api_source_from_row,
@@ -144,10 +145,11 @@ class SpotEndpointContractTest(unittest.TestCase):
             return_value="寒武纪-U",
         ):
             out = spot("sh688256")
-        self.assertEqual(out["price"], 1310.0)
-        self.assertIsNone(out["change_pct"])
-        self.assertNotEqual(out["change_pct"], 0)
-        self.assertIn("change_pct unavailable from upstream", out["warnings"])
+        validated = Spot.model_validate(out)
+        self.assertEqual(validated.price, 1310.0)
+        self.assertIsNone(validated.change_pct)
+        self.assertNotEqual(validated.change_pct, 0)
+        self.assertIn("change_pct unavailable from upstream", validated.warnings or [])
 
     def test_terminal_path_missing_close_returns_502(self) -> None:
         df = pd.DataFrame(
