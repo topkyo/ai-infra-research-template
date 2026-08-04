@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -70,6 +71,7 @@ def db():
 CACHE_MAX_ROWS = int(os.environ.get("PYSERVER_CACHE_MAX_ROWS", "20000"))
 _PRUNE_INTERVAL_S = 600
 _last_prune_at = 0.0
+_prune_lock = threading.Lock()
 
 
 def cache_get(key: str) -> Any | None:
@@ -125,9 +127,11 @@ def cache_put(key: str, value: Any, ttl_seconds: int) -> None:
             (scoped_key, json.dumps(value, ensure_ascii=False), int(time.time()), ttl_seconds),
         )
     now = time.monotonic()
-    if now - _last_prune_at > _PRUNE_INTERVAL_S:
+    with _prune_lock:
+        if now - _last_prune_at <= _PRUNE_INTERVAL_S:
+            return
         _last_prune_at = now
-        try:
-            cache_prune()
-        except Exception:
-            log.exception("cache_prune failed")
+    try:
+        cache_prune()
+    except Exception:
+        log.exception("cache_prune failed")

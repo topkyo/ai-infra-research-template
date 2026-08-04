@@ -194,7 +194,7 @@ test("/api/universe/refresh refuses when refresh token is missing or wrong", asy
     const { POST } = await import("../app/api/universe/refresh/route");
     const noToken = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", { method: "POST" })));
     assert.equal(noToken.at(-1)?.type, "error");
-    assert.match(String(noToken.at(-1)?.message), /未配置 UNIVERSE_REFRESH_TOKEN/);
+    assert.match(String(noToken.at(-1)?.message), /刷新令牌无效/);
 
     process.env.UNIVERSE_REFRESH_TOKEN = "expected-token-16";
     const wrong = await readEvents(await POST(new NextRequest("http://test/api/universe/refresh", {

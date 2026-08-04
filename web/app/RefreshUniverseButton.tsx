@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readNdjsonStream } from "@/lib/ndjson";
 
+// Token is stored in sessionStorage (not localStorage) so it clears when the
+// tab closes — limits exposure window. New tabs must re-paste. Private-mode
+// quota failures are tolerated (operator can still paste per click).
 const TOKEN_STORAGE_KEY = "topkyo.universeRefreshToken";
 
 interface RefreshResult {

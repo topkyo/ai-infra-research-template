@@ -34,8 +34,13 @@ export function writeUniverse(file: UniverseFile): void {
   // (compose mounts ./web/data → /app/data); a single-file bind of
   // universe.json makes rename fail or detach from the host inode.
   const tmp = FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", "utf-8");
-  fs.renameSync(tmp, FILE);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", "utf-8");
+    fs.renameSync(tmp, FILE);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* tmp may not exist or already renamed */ }
+    throw e;
+  }
 }
 
 /** Convenience accessor for callers that only want the entries. */

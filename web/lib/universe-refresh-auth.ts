@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 /** Env var holding the shared secret for POST /api/universe/refresh. */
@@ -17,14 +17,13 @@ export function extractRefreshToken(req: NextRequest): string {
 }
 
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) {
-    // Constant-time-ish reject on length mismatch without throwing.
-    if (ab.length > 0) timingSafeEqual(ab, ab);
-    return false;
-  }
-  return timingSafeEqual(ab, bb);
+  // Hash both inputs to fixed-length digests before constant-time comparison.
+  // This eliminates the timing side-channel from length-mismatch early
+  // returns: both hashes are always 32 bytes, so timingSafeEqual never
+  // short-circuits on different lengths.
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb);
 }
 
 /** Well-known placeholders that must never be accepted as production secrets. */
@@ -57,12 +56,18 @@ export function refreshTokenConfigError(token: string): string | null {
 
 /**
  * Gate for /api/universe/refresh. Returns an error message when the caller
- * must be refused; null when the request may proceed.
+ * must be refused; null when the request may proceed. Returns a unified
+ * "刷新令牌无效" for both config errors and wrong tokens to avoid leaking
+ * whether the server has a configured secret; the specific config error is
+ * logged server-side via console.error.
  */
 export function refreshAuthError(req: NextRequest): string | null {
   const expected = configuredRefreshToken();
   const configError = refreshTokenConfigError(expected);
-  if (configError) return configError;
+  if (configError) {
+    console.error(`[universe-refresh] ${configError}`);
+    return "刷新令牌无效";
+  }
   const provided = extractRefreshToken(req);
   if (!provided || !safeEqual(provided, expected)) {
     return "刷新令牌无效";

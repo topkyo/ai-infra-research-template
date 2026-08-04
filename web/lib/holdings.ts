@@ -105,8 +105,13 @@ export function writeHoldings(value: unknown, entries?: UniverseEntry[]): Loaded
     updated_at: validated.updated_at ?? new Date().toISOString().slice(0, 10),
   };
   const tmpFile = `${HOLDINGS_FILE}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmpFile, `${JSON.stringify(withDate, null, 2)}\n`, "utf-8");
-  fs.renameSync(tmpFile, HOLDINGS_FILE);
+  try {
+    fs.writeFileSync(tmpFile, `${JSON.stringify(withDate, null, 2)}\n`, "utf-8");
+    fs.renameSync(tmpFile, HOLDINGS_FILE);
+  } catch (e) {
+    try { fs.unlinkSync(tmpFile); } catch { /* tmp may not exist or already renamed */ }
+    throw e;
+  }
   return {
     fileFound: true,
     filePath: HOLDINGS_FILE,

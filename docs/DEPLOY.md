@@ -97,7 +97,7 @@ web 服务挂载：
 
 股票池 UI 刷新另需在 `.env` 设置强随机 `UNIVERSE_REFRESH_TOKEN`（≥16 位，与首页令牌一致）；未设置或仍为占位值时接口拒绝。
 
-**首次启动前**必须从示例复制持仓文件，否则 bind mount 可能失败：
+**首次启动前**必须从示例复制持仓文件，否则真实持仓信号不可用（`/api/signals` 返回 `setup_required`）：
 
 ```bash
 cp web/data/holdings.example.json private/holdings.local.json
