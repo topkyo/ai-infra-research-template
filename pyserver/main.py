@@ -419,11 +419,16 @@ def _num_or_none(value: Any) -> float | None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    matches = re.findall(r"-?\d+(?:\.\d+)?", str(value))
-    if not matches:
-        return None
-    nums = [float(x) for x in matches]
-    return sum(nums) / len(nums)
+    text = str(value).replace(",", "")
+    matches = re.findall(r"-?\d+(?:\.\d+)?", text)
+    if len(matches) == 1:
+        return float(matches[0])
+    log.warning(
+        "_num_or_none: expected exactly one number in %r, found %d",
+        value,
+        len(matches),
+    )
+    return None
 
 
 def _compact_code(ts_code: str) -> str:
