@@ -714,8 +714,8 @@ function mockPortfolioTargetFor(snapshot: PortfolioScoringSnapshot): PortfolioTa
     targetWeight: sig.action === "buy" ? 0.15 : 0,
     confidence: sig.confidence,
     rationale: sig.rationale,
-    evidence: [],
-    risks: [],
+    evidence: ["mock provider：基于窗口动量的占位证据，非真实研究，不可用于实盘决策"],
+    risks: ["mock provider：仅供测试/e2e，输出不可当作研究结论或交易依据"],
     invalidation: "mock provider",
     source: "llm-mock",
   };

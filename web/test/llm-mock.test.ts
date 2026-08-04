@@ -30,6 +30,10 @@ test("mock provider returns deterministic offline signals without network", asyn
     assert.ok(targets[0].targetWeight > 0);
     assert.equal(targets[1].targetWeight, 0);
     assert.ok(targets.every((t) => t.source === "llm-mock"));
+    assert.ok(targets[0].evidence.length > 0);
+    assert.ok(targets[0].risks.length > 0);
+    assert.match(targets[0].evidence[0], /mock provider/i);
+    assert.match(targets[0].risks[0], /mock provider/i);
 
     // Code paths without a mock implementation fail explicitly (no silent
     // degradation): chat/universe-refresh style calls must throw.
