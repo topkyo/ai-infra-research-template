@@ -1,3 +1,5 @@
+# Both services run as uid 1001 (user app). Bind mounts and named volumes must be
+# writable by that uid — see docs/DEPLOY.md §3 and private/README.md.
 services:
   pyserver:
     restart: unless-stopped
@@ -16,6 +18,7 @@ services:
       TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
       PYSERVER_CACHE_DB: /app/cache-data/cache.db
     volumes:
+      # Named volume: first compose up seeds ownership from image /app/cache-data (uid 1001).
       - pyserver-cache:/app/cache-data
     healthcheck:
       # python:3.13-slim has no curl/wget; use stdlib urllib.
@@ -40,8 +43,10 @@ services:
     volumes:
       # Directory mounts so atomic tmp+rename updates the host inode.
       # Single-file binds break rename (EBUSY / stale host file).
+      # Host dirs must be writable by container uid 1001 (see docs/DEPLOY.md §3).
       - ./web/data:/app/data
       - ./private:/app/private
+      # Named volume: first compose up seeds ownership from image /app/.cache (uid 1001).
       - web-cache:/app/.cache
     environment:
       TZ: Asia/Shanghai

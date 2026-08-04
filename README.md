@@ -50,7 +50,7 @@ scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 
 品牌文案集中在 [web/lib/site.ts](web/lib/site.ts)，视觉规范见 [DESIGN.md](DESIGN.md)。
 
-生产部署内置健康检查：docker-compose.yml 与两个 Dockerfile 均定义 healthcheck（pyserver 探 `/health`，web 探 `/`），web 依赖 pyserver 健康后启动。
+生产部署内置健康检查：docker-compose.yml 与两个 Dockerfile 均定义 healthcheck（pyserver 探 `/health`，web 探 `/`），web 依赖 pyserver 健康后启动。Compose 镜像以非 root 用户 **uid 1001** 运行；`web/data`、`private/` bind mount 与 `web-cache` / `pyserver-cache` 卷权限见 [docs/DEPLOY.md](docs/DEPLOY.md) §3。
 
 ## 数据与策略原则
 
