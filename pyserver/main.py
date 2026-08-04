@@ -410,6 +410,19 @@ def _to_ts_code(symbol: str) -> tuple[str, str]:
     return code + suffix, mkt
 
 
+def _cache_ts_code(symbol: str) -> str:
+    """Canonical ts_code for symbol-scoped cache keys."""
+    ts_code, _ = _to_ts_code(symbol)
+    return ts_code
+
+
+def _echo_request_symbol(cached: Any, symbol: str) -> Any:
+    """On cache hit, return payload with symbol matching the current request."""
+    if isinstance(cached, dict) and "symbol" in cached:
+        return {**cached, "symbol": symbol}
+    return cached
+
+
 # ---------- input validation whitelist -------------------------------------
 
 # Validators live in validation.py; re-exported here so existing call sites
@@ -1011,7 +1024,8 @@ def klines(
     start = _validate_date(start, "start")
     end = _validate_date(end, "end") if end else date.today().strftime("%Y%m%d")
     _validate_date_range(start, end)
-    key = f"kline:{symbol}:{start}:{end}:{adjust}"
+    ts_code, market = _to_ts_code(symbol)
+    key = f"kline:{ts_code}:{start}:{end}:{adjust}"
     cached = cache_get(key)
     if cached is not None:
         return cached
@@ -1021,7 +1035,6 @@ def klines(
         cache_put(key, rows, 3600)
         return rows
 
-    ts_code, market = _to_ts_code(symbol)
     source = ""
     had_failure = False
     df: pd.DataFrame | None = None
@@ -1133,10 +1146,11 @@ def klines(
 @app.get("/fundamental", response_model=Fundamental)
 def fundamental(symbol: str):
     symbol = _validate_symbol(symbol)
-    key = f"fund:v4:{symbol}"
+    ts_code, market = _to_ts_code(symbol)
+    key = f"fund:v4:{ts_code}"
     cached = cache_get(key)
     if cached is not None:
-        return cached
+        return _echo_request_symbol(cached, symbol)
 
     if MOCK_MODE:
         out = mock_fundamental(symbol)
@@ -1147,7 +1161,6 @@ def fundamental(symbol: str):
         cache_put(key, out, 3600)
         return out
 
-    ts_code, market = _to_ts_code(symbol)
     out: dict[str, Any] = {
         "symbol": symbol,
         "name": None if market in {"sh", "sz", "bj"} else _resolve_name(ts_code, market),
@@ -1239,10 +1252,11 @@ def fundamental(symbol: str):
 def spot(symbol: str):
     """Most-recent close (Tushare Pro has no realtime quote). 30s cache."""
     symbol = _validate_symbol(symbol)
-    key = f"spot:v3:{symbol}"
+    ts_code, market = _to_ts_code(symbol)
+    key = f"spot:v3:{ts_code}"
     cached = cache_get(key)
     if cached is not None:
-        return cached
+        return _echo_request_symbol(cached, symbol)
 
     if MOCK_MODE:
         out = mock_spot(symbol)
@@ -1252,7 +1266,6 @@ def spot(symbol: str):
         cache_put(key, out, 30)
         return out
 
-    ts_code, market = _to_ts_code(symbol)
     start = (date.today() - timedelta(days=10)).strftime("%Y%m%d")
     end = date.today().strftime("%Y%m%d")
     try:
