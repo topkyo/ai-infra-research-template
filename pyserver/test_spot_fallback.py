@@ -11,6 +11,7 @@ import pandas as pd
 from fastapi import HTTPException
 
 import cache as cache_mod
+import main
 from main import (
     Spot,
     _QUOTE_SOURCE_KEY,
@@ -99,6 +100,50 @@ class AkASpotFallbackTest(unittest.TestCase):
         self.assertIsNotNone(row)
         assert row is not None
         self.assertEqual(row[_QUOTE_SOURCE_KEY], "sina_hq_sinajs")
+
+
+class SpotNegativeCacheTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self._cache_patch = patch.object(cache_mod, "DB_PATH", Path(self._tmpdir.name) / "cache.db")
+        self._cache_patch.start()
+        self.addCleanup(self._cache_patch.stop)
+        cache_mod._init_db()
+
+    def test_eastmoney_failure_writes_negative_cache_and_skips_second_http(self) -> None:
+        with patch("main._market_http_get", side_effect=RuntimeError("network down")) as mock_get:
+            first = main._ak_a_spot_rows("688256.SH", "sh")
+            second = main._ak_a_spot_rows("688256.SH", "sh")
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(mock_get.call_count, 1)
+
+    def test_negative_cache_does_not_fabricate_success_on_spot_endpoint(self) -> None:
+        with (
+            patch("main.MOCK_MODE", False),
+            patch("main._ak_a_spot_rows", return_value=None),
+            patch("main._sina_a_spot_rows", return_value=None),
+            patch("main._ak_stock_value_row", return_value=None),
+            patch("main._ak_a_spot_from_hist", return_value=None),
+            patch("main._pro", None),
+            patch("main.MARKET_ENABLE_TUSHARE_SECONDARY", False),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                spot("sh688256")
+            self.assertEqual(ctx.exception.status_code, 502)
+
+    def test_sina_missing_volume_adds_warning(self) -> None:
+        row = {
+            "最新价": 1.0,
+            "涨跌幅": 1.5,
+            "成交量": None,
+            "成交额": 200.0,
+            _QUOTE_SOURCE_KEY: "sina_hq_sinajs",
+        }
+        warnings = _spot_warnings_from_row(row)
+        self.assertIn("volume unavailable from upstream", warnings)
+        self.assertNotIn("change_pct unavailable from upstream", warnings)
 
 
 class SpotEndpointContractTest(unittest.TestCase):

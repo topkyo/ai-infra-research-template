@@ -51,7 +51,7 @@ class CacheMaintenanceTest(unittest.TestCase):
         self.assertEqual(main.cache_get("k"), {"v": 2})
         self.assertEqual(self._row_count(), 1)
 
-    def test_cache_prune_removes_expired_and_evicts_oldest(self) -> None:
+    def test_cache_prune_removes_expired_and_evicts_earliest_expiring(self) -> None:
         main.cache_put("old", 1, 1000)
         main.cache_put("new", 2, 1000)
         main.cache_put("gone", 3, 10)
@@ -63,6 +63,21 @@ class CacheMaintenanceTest(unittest.TestCase):
         self.assertEqual(stats["evicted"], 1)
         self.assertIsNotNone(main.cache_get("new"))
         self.assertIsNone(main.cache_get("old"))
+        self.assertEqual(self._row_count(), 1)
+
+    def test_cache_prune_evicts_by_expiry_not_fetched_at(self) -> None:
+        # fetched_at alone would evict "stale" first; expiry order evicts "fresh".
+        main.cache_put("stale", 1, 1000)
+        main.cache_put("fresh", 2, 100)
+        with main.db() as conn:
+            conn.execute(
+                "UPDATE cache SET fetched_at = fetched_at - 500 WHERE key LIKE '%stale'"
+            )
+        stats = main.cache_prune(max_rows=1)
+        self.assertEqual(stats["expired"], 0)
+        self.assertEqual(stats["evicted"], 1)
+        self.assertIsNotNone(main.cache_get("stale"))
+        self.assertIsNone(main.cache_get("fresh"))
         self.assertEqual(self._row_count(), 1)
 
     def test_cache_prune_noop_when_within_limits(self) -> None:

@@ -36,6 +36,7 @@ def analyst(symbol: str):
         _ak_research_consensus,
         _ak_stock_value_row,
         _daily_basic,
+        _echo_request_symbol,
         _num_or_none,
         _pro,
         _report_rc,
@@ -47,10 +48,11 @@ def analyst(symbol: str):
     )
 
     symbol = _validate_symbol(symbol)
-    key = f"analyst:v4:{symbol}"
+    ts_code, market = _to_ts_code(symbol)
+    key = f"analyst:v4:{ts_code}"
     cached = cache_get(key)
     if cached is not None:
-        return cached
+        return _echo_request_symbol(cached, symbol)
 
     if MOCK_MODE:
         # mock_analyst is only present in main's namespace when MOCK_MODE is
@@ -68,7 +70,6 @@ def analyst(symbol: str):
         cache_put(key, out, 3600)
         return out
 
-    ts_code, market = _to_ts_code(symbol)
     out: dict[str, Any] = {
         "symbol": symbol,
         "source": "akshare_primary",

@@ -97,7 +97,7 @@ def cache_get(key: str) -> Any | None:
 
 
 def cache_prune(max_rows: int = CACHE_MAX_ROWS) -> dict[str, int]:
-    """Delete expired rows, then evict oldest rows beyond `max_rows`."""
+    """Delete expired rows, then evict earliest-expiring rows beyond `max_rows`."""
     now = time.time()
     with db() as conn:
         expired = conn.execute(
@@ -109,7 +109,7 @@ def cache_prune(max_rows: int = CACHE_MAX_ROWS) -> dict[str, int]:
         if total > max_rows:
             evicted = conn.execute(
                 "DELETE FROM cache WHERE key IN ("
-                "  SELECT key FROM cache ORDER BY fetched_at ASC LIMIT ?"
+                "  SELECT key FROM cache ORDER BY fetched_at + ttl_seconds ASC LIMIT ?"
                 ")",
                 (total - max_rows,),
             ).rowcount
