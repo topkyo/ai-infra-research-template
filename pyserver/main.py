@@ -492,7 +492,8 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
             end_date=end,
             adjust=adjust or "",
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_zh_a_hist", e)
         df = None
     if df is not None and not df.empty:
         return df
@@ -509,7 +510,8 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_zh_a_daily", e)
         return pd.DataFrame() if first_success_empty else None
     if df is None:
         return pd.DataFrame() if first_success_empty else None
@@ -653,7 +655,8 @@ def _ak_stock_value_row(ts_code: str) -> dict[str, Any] | None:
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_value_em", e)
         cache_put(key, NEGATIVE_CACHE, 300)
         return None
     if df is None or df.empty:
@@ -722,7 +725,8 @@ def _ak_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
         response = _requests_get_no_proxy(url, params=params, timeout=3)
         response.raise_for_status()
         data = response.json().get("data")
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_a_spot_em", e)
         cache_put(key, NEGATIVE_CACHE, 10)
         return None
     if not data:
@@ -805,7 +809,8 @@ def _sina_a_spot_rows(ts_code: str, market: str) -> dict[str, Any] | None:
         response.raise_for_status()
         response.encoding = "gbk"
         row = parse_sina_hq_text(response.text, code)
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "sina_hq_sinajs", e)
         cache_put(key, NEGATIVE_CACHE, 10)
         return None
     if row is None:
@@ -824,7 +829,8 @@ def _ak_a_spot(ts_code: str, market: str) -> dict[str, Any] | None:
         if row is not None:
             return row
         return _sina_a_spot_rows(ts_code, market)
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_a_spot", e)
         return None
 
 
@@ -877,7 +883,8 @@ def _ak_consensus_eps(symbol: str) -> tuple[float | None, int | None]:
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_profit_forecast_ths", e)
         return None, None
     if df is None or df.empty or "年度" not in df.columns or "均值" not in df.columns:
         return None, None
@@ -908,7 +915,8 @@ def _ak_research_consensus(symbol: str) -> dict[str, Any]:
             attempts=2,
             base_delay=0.2,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "akshare_stock_research_report_em", e)
         return {}
     if df is None or df.empty:
         return {}
@@ -951,7 +959,8 @@ def _resolve_name(ts_code: str, market: str) -> str | None:
             df = _pro.hk_basic(fields="ts_code,name")
         else:
             df = _pro.stock_basic(list_status="L", fields="ts_code,name")
-    except Exception:
+    except Exception as e:
+        log.warning("provider %s failed: %s", "tushare_name_lookup", e)
         return None
     if df is None or df.empty:
         return None
