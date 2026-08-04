@@ -4,6 +4,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
+# uv sync installs into /app/.venv; HEALTHCHECK/CI smoke use bare `python`.
+ENV PATH="/app/.venv/bin:$PATH"
 COPY main.py mock_data.py cache.py validation.py analyst.py ./
 # Empty token = free live sources (akshare/baostock); set "mock" only for demos/tests.
 ENV TUSHARE_TOKEN=""
