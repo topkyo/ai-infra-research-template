@@ -44,35 +44,63 @@ def benchmark_klines(
         ak_symbol = f"sh{ak_symbol}"
     elif ts_code.endswith(".SZ"):
         ak_symbol = f"sz{ak_symbol}"
+    # Per-source tri-state: None=failure, empty=confirmed no rows, rows=data.
+    had_failure = False
+    confirmed_empty = False
+    df: pd.DataFrame | None = None
     try:
-        df = _with_retries(
+        ak_df = _with_retries(
             _ak_call,
             ak.stock_zh_index_daily,
             symbol=ak_symbol,
             attempts=2,
             base_delay=0.2,
         )
-        if df is not None and not df.empty:
-            df = df[(pd.to_datetime(df["date"]) >= pd.to_datetime(start)) & (pd.to_datetime(df["date"]) <= pd.to_datetime(end))]
+        if ak_df is None:
+            had_failure = True
+        elif ak_df.empty:
+            confirmed_empty = True
+            df = ak_df
+        else:
+            filtered = ak_df[
+                (pd.to_datetime(ak_df["date"]) >= pd.to_datetime(start))
+                & (pd.to_datetime(ak_df["date"]) <= pd.to_datetime(end))
+            ]
+            if filtered.empty:
+                confirmed_empty = True
+            df = filtered
     except Exception:
+        log.exception("benchmark klines AkShare failed for %s", index)
+        had_failure = True
         df = None
 
     if (df is None or df.empty) and _pro is not None and MARKET_ENABLE_TUSHARE_SECONDARY:
         try:
-            df = _with_retries(
+            ts_df = _with_retries(
                 _pro.index_daily,
                 ts_code=ts_code,
                 start_date=start,
                 end_date=end,
             )
+            if ts_df is None:
+                had_failure = True
+            elif not ts_df.empty:
+                df = ts_df
+            else:
+                confirmed_empty = True
+                df = ts_df
         except Exception as e:
-            # Do not leak upstream exception details (URLs, tokens) to clients.
-            log.exception("benchmark klines upstream failed for %s", index)
-            raise HTTPException(502, "upstream index data error; detail logged server-side") from e
+            log.exception("benchmark klines Tushare failed for %s", index)
+            if not confirmed_empty:
+                raise HTTPException(
+                    502, "upstream index data error; detail logged server-side"
+                ) from e
+            had_failure = True
 
+    if df is None and not had_failure:
+        cache_put(key, [], _empty_bars_ttl(end))
+        return []
     if df is None:
-        # All sources returned None — upstream failure, not genuinely empty.
-        # Do NOT disguise this as a successful empty result (禁止静默降级).
         log.warning("benchmark/klines: all sources returned None for %s (%s-%s)", index, start, end)
         raise HTTPException(502, "index data unavailable from any source; detail logged server-side")
     if df.empty:

@@ -6,10 +6,15 @@ dependencies = [
     "akshare>=1.18.60",
     "baostock>=0.9.1",
     "fastapi>=0.136.1",
-    "httpx>=0.28.1",
+    "requests>=2.34.0",
     "pandas>=3.0.3",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "tushare>=1.4.29",
     "uvicorn[standard]>=0.46.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
 ]

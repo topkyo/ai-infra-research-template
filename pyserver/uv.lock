@@ -909,12 +909,17 @@ dependencies = [
     { name = "akshare" },
     { name = "baostock" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "tushare" },
     { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
 ]
 
 [package.metadata]
@@ -922,13 +927,16 @@ requires-dist = [
     { name = "akshare", specifier = ">=1.18.60" },
     { name = "baostock", specifier = ">=0.9.1" },
     { name = "fastapi", specifier = ">=0.136.1" },
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "requests", specifier = ">=2.34.0" },
     { name = "tushare", specifier = ">=1.4.29" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [[package]]
 name = "python-dateutil"

@@ -27,7 +27,7 @@ def _ak_a_spot_from_hist(ts_code: str, market: str, symbol: str) -> dict[str, An
     end = date.today().strftime("%Y%m%d")
     start = (date.today() - timedelta(days=15)).strftime("%Y%m%d")
     df = _ak_a_hist_df(code, start, end, "qfq")
-    if df is None:
+    if df is None or df.empty:
         return None
     row = df.iloc[-1]
     price = _num_or_none(_ak_col(row, "收盘", "close"))
