@@ -50,7 +50,7 @@ class EndpointIntegrationTest(unittest.TestCase):
                 },
             ],
         )
-        with patch.object(main, "MOCK_MODE", False), patch.object(main, "_ak_a_hist_df", return_value=df):
+        with patch("routes.klines.MOCK_MODE", False), patch("routes.klines._ak_a_hist_df", return_value=df):
             resp = client.get(
                 "/klines",
                 params={"symbol": "600519", "start": "20260801", "end": "20260801"},
@@ -62,11 +62,11 @@ class EndpointIntegrationTest(unittest.TestCase):
 
     def test_klines_all_sources_fail_returns_502_without_empty_cache(self) -> None:
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch.object(main, "_ak_a_hist_df", return_value=None),
-            patch.object(main, "_baostock_hist_df", return_value=None),
-            patch.object(main, "_pro", None),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", False),
+            patch("routes.klines.MOCK_MODE", False),
+            patch("routes.klines._ak_a_hist_df", return_value=None),
+            patch("routes.klines._baostock_hist_df", return_value=None),
+            patch("routes.klines._pro", None),
+            patch("routes.klines.MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             resp = client.get(
                 "/klines",
@@ -81,11 +81,11 @@ class EndpointIntegrationTest(unittest.TestCase):
         past_end = (date.today() - timedelta(days=30)).strftime("%Y%m%d")
         expected_ttl = main._empty_bars_ttl(past_end)
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch.object(main, "_ak_a_hist_df", return_value=pd.DataFrame()),
-            patch.object(main, "_baostock_hist_df", return_value=pd.DataFrame()),
-            patch.object(main, "_pro", None),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", False),
+            patch("routes.klines.MOCK_MODE", False),
+            patch("routes.klines._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("routes.klines._baostock_hist_df", return_value=pd.DataFrame()),
+            patch("routes.klines._pro", None),
+            patch("routes.klines.MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             resp = client.get(
                 "/klines",
@@ -109,11 +109,11 @@ class EndpointIntegrationTest(unittest.TestCase):
             "change_pct": 1.2,
         }
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch.object(main, "_ak_stock_value_row", return_value=stock_value),
-            patch.object(main, "_ak_a_spot", return_value=None),
-            patch.object(main, "_attach_profit_yoy"),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", False),
+            patch("routes.fundamental.MOCK_MODE", False),
+            patch("routes.fundamental._ak_stock_value_row", return_value=stock_value),
+            patch("routes.fundamental._ak_a_spot", return_value=None),
+            patch("routes.fundamental._attach_profit_yoy"),
+            patch("routes.fundamental.MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             resp = client.get("/fundamental", params={"symbol": "600519"})
         self.assertEqual(resp.status_code, 502)
@@ -130,10 +130,10 @@ class EndpointIntegrationTest(unittest.TestCase):
             main._QUOTE_SOURCE_KEY: "sina_hq_sinajs",
         }
         with (
-            patch.object(main, "MOCK_MODE", False),
+            patch("routes.spot.MOCK_MODE", False),
             patch("providers.akshare_spot._ak_a_spot_rows", return_value=None),
             patch("providers.akshare_spot._sina_a_spot_rows", return_value=sina_row),
-            patch.object(main, "_resolve_name", return_value="寒武纪-U"),
+            patch("routes.spot._resolve_name", return_value="寒武纪-U"),
         ):
             resp = client.get("/spot", params={"symbol": "sh688256"})
         self.assertEqual(resp.status_code, 200)

@@ -121,13 +121,13 @@ class SpotNegativeCacheTest(unittest.TestCase):
 
     def test_negative_cache_does_not_fabricate_success_on_spot_endpoint(self) -> None:
         with (
-            patch("main.MOCK_MODE", False),
+            patch("routes.spot.MOCK_MODE", False),
             patch("providers.akshare_spot._ak_a_spot_rows", return_value=None),
             patch("providers.akshare_spot._sina_a_spot_rows", return_value=None),
-            patch("main._ak_stock_value_row", return_value=None),
-            patch("main._ak_a_spot_from_hist", return_value=None),
-            patch("main._pro", None),
-            patch("main.MARKET_ENABLE_TUSHARE_SECONDARY", False),
+            patch("routes.spot._ak_stock_value_row", return_value=None),
+            patch("routes.spot._ak_a_spot_from_hist", return_value=None),
+            patch("routes.spot._pro", None),
+            patch("routes.spot.MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             with self.assertRaises(HTTPException) as ctx:
                 spot("sh688256")
@@ -164,13 +164,13 @@ class SpotEndpointContractTest(unittest.TestCase):
             "成交额": 200.0,
             _QUOTE_SOURCE_KEY: "akshare_eastmoney",
         }
-        with patch("main.MOCK_MODE", False), patch("main._ak_a_spot", return_value=ak_row), patch(
-            "main._ak_stock_value_row",
+        with patch("routes.spot.MOCK_MODE", False), patch("routes.spot._ak_a_spot", return_value=ak_row), patch(
+            "routes.spot._ak_stock_value_row",
             return_value=None,
-        ), patch("main._ak_a_spot_from_hist", return_value=None), patch(
-            "main._pro",
+        ), patch("routes.spot._ak_a_spot_from_hist", return_value=None), patch(
+            "routes.spot._pro",
             None,
-        ), patch("main.MARKET_ENABLE_TUSHARE_SECONDARY", False):
+        ), patch("routes.spot.MARKET_ENABLE_TUSHARE_SECONDARY", False):
             with self.assertRaises(HTTPException) as ctx:
                 spot("sh688256")
             self.assertEqual(ctx.exception.status_code, 502)
@@ -185,8 +185,8 @@ class SpotEndpointContractTest(unittest.TestCase):
             "成交额": 200.0,
             _QUOTE_SOURCE_KEY: "sina_hq_sinajs",
         }
-        with patch("main.MOCK_MODE", False), patch("main._ak_a_spot", return_value=ak_row), patch(
-            "main._resolve_name",
+        with patch("routes.spot.MOCK_MODE", False), patch("routes.spot._ak_a_spot", return_value=ak_row), patch(
+            "routes.spot._resolve_name",
             return_value="寒武纪-U",
         ):
             out = spot("sh688256")
@@ -201,13 +201,13 @@ class SpotEndpointContractTest(unittest.TestCase):
             [{"trade_date": "20260801", "close": None, "pct_chg": 1.0, "vol": 100.0, "amount": 200.0}],
         )
         mock_pro = mock.MagicMock()
-        with patch("main.MOCK_MODE", False), patch("main._ak_a_spot", return_value=None), patch(
-            "main._ak_stock_value_row",
+        with patch("routes.spot.MOCK_MODE", False), patch("routes.spot._ak_a_spot", return_value=None), patch(
+            "routes.spot._ak_stock_value_row",
             return_value=None,
-        ), patch("main._ak_a_spot_from_hist", return_value=None), patch(
-            "main._with_retries",
+        ), patch("routes.spot._ak_a_spot_from_hist", return_value=None), patch(
+            "routes.spot._with_retries",
             return_value=df,
-        ), patch("main._pro", mock_pro), patch("main.MARKET_ENABLE_TUSHARE_SECONDARY", True):
+        ), patch("routes.spot._pro", mock_pro), patch("routes.spot.MARKET_ENABLE_TUSHARE_SECONDARY", True):
             with self.assertRaises(HTTPException) as ctx:
                 spot("sh688256")
             self.assertEqual(ctx.exception.status_code, 502)

@@ -30,8 +30,8 @@ class CacheAliasTest(unittest.TestCase):
             "成交额": 200.0,
             main._QUOTE_SOURCE_KEY: "akshare_eastmoney",
         }
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_a_spot", side_effect=[ak_row, AssertionError("upstream called twice")],
+        with patch("routes.spot.MOCK_MODE", False), patch(
+            "routes.spot._ak_a_spot", side_effect=[ak_row, AssertionError("upstream called twice")],
         ) as mock_ak:
             first = main.spot("sh600519")
             second = main.spot("600519.SH")
@@ -49,10 +49,10 @@ class CacheAliasTest(unittest.TestCase):
             "latest_date": "2026-08-01",
             "change_pct": 1.0,
         }
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_stock_value_row", side_effect=[stock_value, AssertionError("upstream called twice")],
-        ), patch.object(main, "_ak_a_spot", return_value=None), patch.object(
-            main, "_attach_profit_yoy",
+        with patch("routes.fundamental.MOCK_MODE", False), patch(
+            "routes.fundamental._ak_stock_value_row", side_effect=[stock_value, AssertionError("upstream called twice")],
+        ), patch("routes.fundamental._ak_a_spot", return_value=None), patch(
+            "routes.fundamental._attach_profit_yoy",
         ):
             first = main.fundamental("600519")
             second = main.fundamental("sh600519")
@@ -73,8 +73,8 @@ class CacheAliasTest(unittest.TestCase):
                 },
             ],
         )
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_a_hist_df", side_effect=[df, AssertionError("upstream called twice")],
+        with patch("routes.klines.MOCK_MODE", False), patch(
+            "routes.klines._ak_a_hist_df", side_effect=[df, AssertionError("upstream called twice")],
         ) as mock_hist:
             first = main.klines(symbol="600519", start="20260801", end="20260801", adjust="qfq")
             second = main.klines(symbol="sh600519", start="20260801", end="20260801", adjust="qfq")

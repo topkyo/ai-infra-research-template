@@ -32,8 +32,8 @@ class EndpointCacheHitTest(unittest.TestCase):
             "成交额": 200.0,
             main._QUOTE_SOURCE_KEY: "akshare_eastmoney",
         }
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_a_spot", side_effect=[ak_row, AssertionError("upstream called twice")],
+        with patch("routes.spot.MOCK_MODE", False), patch(
+            "routes.spot._ak_a_spot", side_effect=[ak_row, AssertionError("upstream called twice")],
         ) as mock_ak:
             main.spot("600519")
             main.spot("600519")
@@ -48,10 +48,10 @@ class EndpointCacheHitTest(unittest.TestCase):
             "latest_date": "2026-08-01",
             "change_pct": 1.0,
         }
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_stock_value_row", side_effect=[stock_value, AssertionError("upstream called twice")],
-        ) as mock_sv, patch.object(main, "_ak_a_spot", return_value=None), patch.object(
-            main, "_attach_profit_yoy",
+        with patch("routes.fundamental.MOCK_MODE", False), patch(
+            "routes.fundamental._ak_stock_value_row", side_effect=[stock_value, AssertionError("upstream called twice")],
+        ) as mock_sv, patch("routes.fundamental._ak_a_spot", return_value=None), patch(
+            "routes.fundamental._attach_profit_yoy",
         ):
             main.fundamental("600519")
             main.fundamental("600519")
@@ -70,8 +70,8 @@ class EndpointCacheHitTest(unittest.TestCase):
                 },
             ],
         )
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_a_hist_df", side_effect=[df, AssertionError("upstream called twice")],
+        with patch("routes.klines.MOCK_MODE", False), patch(
+            "routes.klines._ak_a_hist_df", side_effect=[df, AssertionError("upstream called twice")],
         ) as mock_hist:
             main.klines(symbol="600519", start="20260801", end="20260801", adjust="qfq")
             main.klines(symbol="600519", start="20260801", end="20260801", adjust="qfq")
@@ -107,8 +107,8 @@ class EndpointCacheHitTest(unittest.TestCase):
                 },
             ],
         )
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_call", side_effect=[df, AssertionError("upstream called twice")],
+        with patch("routes.benchmarks.MOCK_MODE", False), patch(
+            "routes.benchmarks._ak_call", side_effect=[df, AssertionError("upstream called twice")],
         ) as mock_ak:
             main.benchmark_klines(index="csi300", start="20260801", end="20260801")
             main.benchmark_klines(index="csi300", start="20260801", end="20260801")
