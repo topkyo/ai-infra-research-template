@@ -18,11 +18,12 @@ class FundamentalLatestCloseWarningTest(unittest.TestCase):
             "change_pct": 1.2,
         }
         with (
-            patch.object(main, "cache_get", return_value=None),
-            patch.object(main, "cache_put"),
-            patch.object(main, "_ak_stock_value_row", return_value=stock_value),
-            patch.object(main, "_ak_a_spot", return_value=None),
-            patch.object(main, "_attach_profit_yoy"),
+            patch("routes.fundamental.MOCK_MODE", False),
+            patch("routes.fundamental.cache_get", return_value=None),
+            patch("routes.fundamental.cache_put"),
+            patch("routes.fundamental._ak_stock_value_row", return_value=stock_value),
+            patch("routes.fundamental._ak_a_spot", return_value=None),
+            patch("routes.fundamental._attach_profit_yoy"),
         ):
             out = main.fundamental("600519")
 
@@ -42,11 +43,12 @@ class FundamentalLatestCloseWarningTest(unittest.TestCase):
             "change_pct": 1.2,
         }
         with (
-            patch.object(main, "cache_get", return_value=None),
-            patch.object(main, "cache_put"),
-            patch.object(main, "_ak_stock_value_row", return_value=stock_value),
-            patch.object(main, "_ak_a_spot", return_value=None),
-            patch.object(main, "_attach_profit_yoy"),
+            patch("routes.fundamental.MOCK_MODE", False),
+            patch("routes.fundamental.cache_get", return_value=None),
+            patch("routes.fundamental.cache_put"),
+            patch("routes.fundamental._ak_stock_value_row", return_value=stock_value),
+            patch("routes.fundamental._ak_a_spot", return_value=None),
+            patch("routes.fundamental._attach_profit_yoy"),
         ):
             out = main.fundamental("600519")
 

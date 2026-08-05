@@ -60,11 +60,11 @@ class KlinesEmptyResultTest(unittest.TestCase):
             "volume": [1000.0],
         })
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch("main.cache_get", return_value=None),
-            patch("main.cache_put"),
-            patch("main._ak_a_hist_df", return_value=pd.DataFrame()),
-            patch("main._baostock_hist_df", return_value=bs_df),
+            patch("routes.klines.MOCK_MODE", False),
+            patch("routes.klines.cache_get", return_value=None),
+            patch("routes.klines.cache_put"),
+            patch("routes.klines._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("routes.klines._baostock_hist_df", return_value=bs_df),
         ):
             rows = main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
         self.assertEqual(len(rows), 1)
@@ -73,25 +73,25 @@ class KlinesEmptyResultTest(unittest.TestCase):
 
     def test_a_share_all_empty_returns_empty_list(self) -> None:
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch("main.cache_get", return_value=None),
-            patch("main.cache_put"),
-            patch("main._ak_a_hist_df", return_value=pd.DataFrame()),
-            patch("main._baostock_hist_df", return_value=pd.DataFrame()),
-            patch.object(main, "_pro", None),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", False),
+            patch("routes.klines.MOCK_MODE", False),
+            patch("routes.klines.cache_get", return_value=None),
+            patch("routes.klines.cache_put"),
+            patch("routes.klines._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("routes.klines._baostock_hist_df", return_value=pd.DataFrame()),
+            patch("routes.klines._pro", None),
+            patch("routes.klines.MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             rows = main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
         self.assertEqual(rows, [])
 
     def test_a_share_all_none_returns_502(self) -> None:
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch("main.cache_get", return_value=None),
-            patch("main._ak_a_hist_df", return_value=None),
-            patch("main._baostock_hist_df", return_value=None),
-            patch.object(main, "_pro", None),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", False),
+            patch("routes.klines.MOCK_MODE", False),
+            patch("routes.klines.cache_get", return_value=None),
+            patch("routes.klines._ak_a_hist_df", return_value=None),
+            patch("routes.klines._baostock_hist_df", return_value=None),
+            patch("routes.klines._pro", None),
+            patch("routes.klines.MARKET_ENABLE_TUSHARE_SECONDARY", False),
         ):
             with self.assertRaises(HTTPException) as ctx:
                 main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
@@ -107,14 +107,14 @@ class KlinesEmptyResultTest(unittest.TestCase):
             "vol": [1000.0],
         })
         with (
-            patch.object(main, "MOCK_MODE", False),
-            patch("main.cache_get", return_value=None),
-            patch("main.cache_put"),
-            patch("main._ak_a_hist_df", return_value=pd.DataFrame()),
-            patch("main._baostock_hist_df", side_effect=RuntimeError("baostock login failed")),
-            patch.object(main, "_pro", object()),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
-            patch("main._with_retries", return_value=ts_df),
+            patch("routes.klines.MOCK_MODE", False),
+            patch("routes.klines.cache_get", return_value=None),
+            patch("routes.klines.cache_put"),
+            patch("routes.klines._ak_a_hist_df", return_value=pd.DataFrame()),
+            patch("routes.klines._baostock_hist_df", side_effect=RuntimeError("baostock login failed")),
+            patch("routes.klines._pro", object()),
+            patch("routes.klines.MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch("routes.klines._with_retries", return_value=ts_df),
         ):
             rows = main.klines(symbol="600519", start="20230101", end="20240101", adjust="qfq")
         self.assertEqual(len(rows), 1)
