@@ -11,7 +11,7 @@ from cache import cache_get, cache_put
 from config import NEGATIVE_CACHE, _QUOTE_SOURCE_KEY, log
 from http_util import _market_http_get
 from providers.akshare_hist import _ak_a_hist_df
-from providers.tushare_api import _pro
+import providers.tushare_api as tushare_api
 from symbols import _compact_code, _eastmoney_market_code, _infer_market_prefix
 from util import _ak_col, _num_or_none
 
@@ -216,15 +216,15 @@ def _spot_change_pct_from_ak(row: dict[str, Any]) -> float | None:
 
 
 def _resolve_name(ts_code: str, market: str) -> str | None:
-    if _pro is None:
+    if tushare_api._pro is None:
         return None
     if ts_code in _NAME_CACHE:
         return _NAME_CACHE[ts_code]
     try:
         if market == "hk":
-            df = _pro.hk_basic(fields="ts_code,name")
+            df = tushare_api._pro.hk_basic(fields="ts_code,name")
         else:
-            df = _pro.stock_basic(list_status="L", fields="ts_code,name")
+            df = tushare_api._pro.stock_basic(list_status="L", fields="ts_code,name")
     except Exception as e:
         log.warning("provider %s failed: %s", "tushare_name_lookup", e)
         return None

@@ -126,7 +126,7 @@ class BaostockHistDfTest(unittest.TestCase):
 
 class BaostockGrowthYoyTest(unittest.TestCase):
     def test_hk_code_returns_none_without_query(self) -> None:
-        with patch("main.cache_get", return_value=None), patch("providers.baostock_api._baostock_login") as login, patch(
+        with patch("providers.baostock_api.cache_get", return_value=None), patch("providers.baostock_api._baostock_login") as login, patch(
             "providers.baostock_api._baostock_logout"
         ) as logout, patch("providers.baostock_api.bs.query_growth_data") as query:
             result = main._baostock_growth_yoy("00700.HK")

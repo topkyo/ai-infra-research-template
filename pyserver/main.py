@@ -109,11 +109,13 @@ from providers.akshare_hist import (  # noqa: E402
     _rows_from_ak_hist,
 )
 from providers.akshare_spot import (  # noqa: E402
+    _NAME_CACHE,
     _ak_a_spot,
     _ak_a_spot_from_hist,
     _ak_a_spot_rows,
     _resolve_name,
     _sina_a_spot_rows,
+    _sina_hq_list_id,
     _spot_api_source_from_row,
     _spot_change_pct_from_ak,
     _spot_missing_field_warnings,
@@ -122,6 +124,7 @@ from providers.akshare_spot import (  # noqa: E402
     parse_sina_hq_text,
 )
 from providers.baostock_api import (  # noqa: E402
+    _baostock_code,
     _baostock_growth_yoy,
     _baostock_hist_df,
     _baostock_login,
