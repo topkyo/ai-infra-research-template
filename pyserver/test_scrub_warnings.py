@@ -68,17 +68,16 @@ class ScrubWarningsTest(unittest.TestCase):
         with (
             patch.object(analyst_mod, "cache_get", return_value=None),
             patch.object(analyst_mod, "cache_put"),
-            patch.object(main, "_ak_a_spot", return_value=None),
-            patch.object(main, "_ak_stock_value_row", return_value=None),
-            patch.object(main, "_ak_a_spot_from_hist", return_value=None),
-            patch.object(main, "_ak_research_consensus", return_value={}),
-            patch.object(main, "_ak_consensus_eps", return_value=(None, None)),
-            patch.object(main, "_pro", object()),
+            patch.object(analyst_mod, "_ak_a_spot", return_value=None),
+            patch.object(analyst_mod, "_ak_stock_value_row", return_value=None),
+            patch.object(analyst_mod, "_ak_a_spot_from_hist", return_value=None),
+            patch.object(analyst_mod, "_ak_research_consensus", return_value={}),
+            patch.object(analyst_mod, "_ak_consensus_eps", return_value=(None, None)),
             patch("providers.tushare_api._pro", object()),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch.object(analyst_mod, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
             patch("providers.tushare_api.MARKET_ENABLE_TUSHARE_SECONDARY", True),
-            patch.object(main, "_with_retries", side_effect=secret_err),
-            patch.object(main.log, "exception"),
+            patch.object(analyst_mod, "_with_retries", side_effect=secret_err),
+            patch.object(analyst_mod.log, "exception"),
         ):
             out = analyst("600519")
 
@@ -100,17 +99,16 @@ class ScrubWarningsTest(unittest.TestCase):
         with (
             patch.object(analyst_mod, "cache_get", return_value=None),
             patch.object(analyst_mod, "cache_put"),
-            patch.object(main, "_ak_a_spot", return_value={"最新价": 10.0}),
-            patch.object(main, "_spot_price_from_ak", return_value=10.0),
-            patch.object(main, "_ak_stock_value_row", return_value={"pe_ttm": 5.0}),
-            patch.object(main, "_ak_research_consensus", return_value={}),
-            patch.object(main, "_ak_consensus_eps", return_value=(None, None)),
-            patch.object(main, "_pro", object()),
+            patch.object(analyst_mod, "_ak_a_spot", return_value={"最新价": 10.0}),
+            patch.object(analyst_mod, "_spot_price_from_ak", return_value=10.0),
+            patch.object(analyst_mod, "_ak_stock_value_row", return_value={"pe_ttm": 5.0}),
+            patch.object(analyst_mod, "_ak_research_consensus", return_value={}),
+            patch.object(analyst_mod, "_ak_consensus_eps", return_value=(None, None)),
             patch("providers.tushare_api._pro", object()),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch.object(analyst_mod, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
             patch("providers.tushare_api.MARKET_ENABLE_TUSHARE_SECONDARY", True),
-            patch.object(main, "_with_retries", side_effect=secret_err),
-            patch.object(main.log, "exception"),
+            patch.object(analyst_mod, "_with_retries", side_effect=secret_err),
+            patch.object(analyst_mod.log, "exception"),
         ):
             out = analyst("600519")
 

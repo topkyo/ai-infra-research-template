@@ -49,12 +49,12 @@
 - Modify: `pyserver/main.py`（改为从上述模块 import，并 re-export 同名符号）
 - Test: 现有 `test_unit_helpers.py`, `test_num_or_none.py`, `test_with_retries.py`, `test_validation.py`（应仍经 `main.` 访问）
 
-- [ ] **Step 1:** 创建 `config.py`：迁入 `log`、`MARKET_HTTP_PROXY`、`TUSHARE_TOKEN`、`MOCK_MODE`、`HAS_TUSHARE_TOKEN`、`STRICT_LIVE_DATA`、`MARKET_ENABLE_TUSHARE_SECONDARY`、`CACHE_NAMESPACE`、`NEGATIVE_CACHE`、`_QUOTE_SOURCE_KEY`。保留 `load_dotenv` / `_strip_proxy_env` 的启动副作用顺序与现网一致（dotenv + proxy strip 仍在 import 链最早处执行——可放 `config.py` 顶层，`main` 首先 `import config`）。
-- [ ] **Step 2:** 创建 `models.py`：迁入四个 Pydantic 模型。
-- [ ] **Step 3:** 创建 `symbols.py`：迁入 `_to_ts_code`、`_cache_ts_code`、`_echo_request_symbol`、`_compact_code`、`_infer_market_prefix`、`_eastmoney_market_code`。
-- [ ] **Step 4:** 创建 `util.py`：迁入 `_num_or_none`、`_ak_col`、`_market_cap_to_yi`、`_source_summary`、`seconds_until_next_trading_close`、`_empty_bars_ttl`。
-- [ ] **Step 5:** 创建 `http_util.py`：迁入 `_market_http_session`、`_market_http_get`、`_TokenBucket`、limiters、`_AK_LOCK`/`_BS_LOCK`、`_ak_call`、`_with_retries`。
-- [ ] **Step 6:** `main.py` 删除已迁定义，改为 import + **显式 re-export**（`from util import _num_or_none` 等），保证 `main._num_or_none` / `main._with_retries` 仍存在。保留 `cache_mod.CACHE_NAMESPACE = config.CACHE_NAMESPACE` 接线。
+- [x] **Step 1:** 创建 `config.py`：迁入 `log`、`MARKET_HTTP_PROXY`、`TUSHARE_TOKEN`、`MOCK_MODE`、`HAS_TUSHARE_TOKEN`、`STRICT_LIVE_DATA`、`MARKET_ENABLE_TUSHARE_SECONDARY`、`CACHE_NAMESPACE`、`NEGATIVE_CACHE`、`_QUOTE_SOURCE_KEY`。保留 `load_dotenv` / `_strip_proxy_env` 的启动副作用顺序与现网一致（dotenv + proxy strip 仍在 import 链最早处执行——可放 `config.py` 顶层，`main` 首先 `import config`）。
+- [x] **Step 2:** 创建 `models.py`：迁入四个 Pydantic 模型。
+- [x] **Step 3:** 创建 `symbols.py`：迁入 `_to_ts_code`、`_cache_ts_code`、`_echo_request_symbol`、`_compact_code`、`_infer_market_prefix`、`_eastmoney_market_code`。
+- [x] **Step 4:** 创建 `util.py`：迁入 `_num_or_none`、`_ak_col`、`_market_cap_to_yi`、`_source_summary`、`seconds_until_next_trading_close`、`_empty_bars_ttl`。
+- [x] **Step 5:** 创建 `http_util.py`：迁入 `_market_http_session`、`_market_http_get`、`_TokenBucket`、limiters、`_AK_LOCK`/`_BS_LOCK`、`_ak_call`、`_with_retries`。
+- [x] **Step 6:** `main.py` 删除已迁定义，改为 import + **显式 re-export**（`from util import _num_or_none` 等），保证 `main._num_or_none` / `main._with_retries` 仍存在。保留 `cache_mod.CACHE_NAMESPACE = config.CACHE_NAMESPACE` 接线。
 - [ ] **Verify:**  
   ```bash
   cd pyserver && uv run python -m unittest \
@@ -73,13 +73,13 @@
 - Modify: `pyserver/main.py`（import providers + re-export）
 - Test: `test_baostock.py`, `test_klines_empty.py`（adapter 部分）, `test_spot_fallback.py`, `test_provider_logging.py`, `test_tushare_bootstrap.py`, `test_scrub_warnings.py`
 
-- [ ] **Step 1:** `providers/tushare_api.py`：迁入 `_pro` 初始化逻辑（与现 `MOCK_MODE` / `MARKET_ENABLE_TUSHARE_SECONDARY` 分支一致）、`_report_rc`、`_daily_basic`、`_fina_indicator`、`_latest_profit_yoy`、`_attach_profit_yoy`。
-- [ ] **Step 2:** `providers/baostock_api.py`：迁入 baostock login/logout/hist/rows/growth。
-- [ ] **Step 3:** `providers/akshare_hist.py`：迁入 `_AK_HIST_RENAME`、`_ak_a_hist_df`、`_rows_from_ak_hist`。
-- [ ] **Step 4:** `providers/akshare_spot.py`：迁入 sina/ak spot 全链、`parse_sina_hq_text`、spot warning/price helpers、`_resolve_name`。
-- [ ] **Step 5:** `providers/akshare_analyst.py`：迁入 `_ak_stock_value_row`、`_ak_consensus_eps`、`_ak_research_consensus`。
-- [ ] **Step 6:** `main.py` re-export 全部迁出的 provider 符号（含 `_pro`、`parse_sina_hq_text`）。路由函数可暂时仍留在 `main.py`，但应改为调用 providers（或仍通过本模块全局名——若仍定义在 main 则本 Task 末先保持路由在 main，仅 helper 迁出）。
-- [ ] **Step 7:** 按 **Patch 纪律** 更新失败测试的 `patch("main.<provider_fn>")` → `patch("providers.<mod>.<fn>")` 或 `patch("main.<fn>")` 仅当被测代码仍从 `main` 属性查找时。优先让被测直接调用 `main.<fn>` 的单测继续用 re-export；让路由内绑定名的集成测改 patch 目标。
+- [x] **Step 1:** `providers/tushare_api.py`：迁入 `_pro` 初始化逻辑（与现 `MOCK_MODE` / `MARKET_ENABLE_TUSHARE_SECONDARY` 分支一致）、`_report_rc`、`_daily_basic`、`_fina_indicator`、`_latest_profit_yoy`、`_attach_profit_yoy`。
+- [x] **Step 2:** `providers/baostock_api.py`：迁入 baostock login/logout/hist/rows/growth。
+- [x] **Step 3:** `providers/akshare_hist.py`：迁入 `_AK_HIST_RENAME`、`_ak_a_hist_df`、`_rows_from_ak_hist`。
+- [x] **Step 4:** `providers/akshare_spot.py`：迁入 sina/ak spot 全链、`parse_sina_hq_text`、spot warning/price helpers、`_resolve_name`。
+- [x] **Step 5:** `providers/akshare_analyst.py`：迁入 `_ak_stock_value_row`、`_ak_consensus_eps`、`_ak_research_consensus`。
+- [x] **Step 6:** `main.py` re-export 全部迁出的 provider 符号（含 `_pro`、`parse_sina_hq_text`）。路由函数可暂时仍留在 `main.py`，但应改为调用 providers（或仍通过本模块全局名——若仍定义在 main 则本 Task 末先保持路由在 main，仅 helper 迁出）。
+- [x] **Step 7:** 按 **Patch 纪律** 更新失败测试的 `patch("main.<provider_fn>")` → `patch("providers.<mod>.<fn>")` 或 `patch("main.<fn>")` 仅当被测代码仍从 `main` 属性查找时。优先让被测直接调用 `main.<fn>` 的单测继续用 re-export；让路由内绑定名的集成测改 patch 目标。
 - [ ] **Verify:**  
   ```bash
   cd pyserver && uv run python -m unittest \
@@ -99,10 +99,10 @@
 - Modify: `pyserver/main.py`（删除 route 函数体，改为 register）
 - Test: `test_endpoints.py`, `test_cache_hit.py`, `test_cache_alias.py`, `test_fundamental_warning.py`, `test_validation.py`, `test_klines_empty.py`
 
-- [ ] **Step 1:** 每个 route 文件导出 `register(app)`，内部用 `@app.get(...)` 注册；handler 实现从 `main` **原样搬移**（Freeze），import providers/config/cache/validation/models。
-- [ ] **Step 2:** `routes/__init__.py` 提供 `register_routes(app)` 依次注册全部（analyst 仍由 `analyst.register_routes` 单独挂，见 Task 4）。
-- [ ] **Step 3:** `main.py`：`app = FastAPI(...)` 后调用 `routes.register_routes(app)`；**re-export** handler 函数名 `health`/`klines`/`spot`/`fundamental`/`benchmark_klines`/`list_benchmarks`，使 `main.klines(...)` 与 `TestClient(main.app)` 仍可用。
-- [ ] **Step 4:** 全面重定向 route 相关 `patch("main._ak_a_hist_df")` 等至 `routes.klines._ak_a_hist_df`（若 klines 从 providers import 到自己的全局）或 `providers.akshare_hist._ak_a_hist_df`——以「patch 能拦截 handler 内调用」为准，跑红测试直到绿。
+- [x] **Step 1:** 每个 route 文件导出 `register(app)`，内部用 `@app.get(...)` 注册；handler 实现从 `main` **原样搬移**（Freeze），import providers/config/cache/validation/models。
+- [x] **Step 2:** `routes/__init__.py` 提供 `register_routes(app)` 依次注册全部（analyst 仍由 `analyst.register_routes` 单独挂，见 Task 4）。
+- [x] **Step 3:** `main.py`：`app = FastAPI(...)` 后调用 `routes.register_routes(app)`；**re-export** handler 函数名 `health`/`klines`/`spot`/`fundamental`/`benchmark_klines`/`list_benchmarks`，使 `main.klines(...)` 与 `TestClient(main.app)` 仍可用。
+- [x] **Step 4:** 全面重定向 route 相关 `patch("main._ak_a_hist_df")` 等至 `routes.klines._ak_a_hist_df`（若 klines 从 providers import 到自己的全局）或 `providers.akshare_hist._ak_a_hist_df`——以「patch 能拦截 handler 内调用」为准，跑红测试直到绿。
 - [ ] **Verify:**  
   ```bash
   cd pyserver && uv run python -m unittest \
@@ -121,7 +121,7 @@
 - Modify: `pyserver/analyst.py`, `pyserver/main.py`
 - Test: 含 analyst 的 endpoint/集成测（`test_endpoints.py` 若覆盖）；全量 suite
 
-- [ ] **Step 1:** 在 `analyst.py` 顶部改为：  
+- [x] **Step 1:** 在 `analyst.py` 顶部改为：  
   `from config import MOCK_MODE, MARKET_ENABLE_TUSHARE_SECONDARY, log`  
   `from symbols import _to_ts_code, _echo_request_symbol`  
   `from util import _num_or_none, _ak_col, _source_summary`  
@@ -132,8 +132,8 @@
   `from config import _QUOTE_SOURCE_KEY`  
   以及 `MOCK_MODE` 时 `from mock_data import mock_analyst`。  
   **删除**所有 `from main import ...`。
-- [ ] **Step 2:** `main.py` 仅保留：import config（副作用）、cache namespace 接线、`app`、`routes.register_routes`、`register_analyst_routes(app, Analyst)`、以及对测试所需符号的显式 re-export 列表（按 `rg 'main\.' pyserver/test_*.py` 清单维护，宁多勿漏）。
-- [ ] **Step 3:** 门禁：  
+- [x] **Step 2:** `main.py` 仅保留：import config（副作用）、cache namespace 接线、`app`、`routes.register_routes`、`register_analyst_routes(app, Analyst)`、以及对测试所需符号的显式 re-export 列表（按 `rg 'main\.' pyserver/test_*.py` 清单维护，宁多勿漏）。
+- [x] **Step 3:** 门禁：  
   ```bash
   rg -n 'from main import|import main' pyserver/analyst.py
   ```  
@@ -158,14 +158,14 @@
 - Modify: 仅当 CI 失败时改 `.github/workflows/ci.yml`（预期**不改** `main:app` / `main.py` 路径）
 - Modify: `docs/plans/2026-08-04-quality-remediation.md` 将 B1/B7 标注为「见本计划」或 Done（一行状态，避免漂移）
 
-- [ ] **Step 1:** 本地复现 CI pyserver 三步：  
+- [x] **Step 1:** 本地复现 CI pyserver 三步：  
   ```bash
   cd pyserver && uv run python -m py_compile main.py \
     && TUSHARE_TOKEN=dummy-ci-token uv run python -c "import importlib.util as u; spec=u.spec_from_file_location('m','main.py'); m=u.module_from_spec(spec); spec.loader.exec_module(m); print(m.app)" \
     && TUSHARE_TOKEN=dummy-ci-token uv run python -m unittest discover -p "test_*.py"
   ```  
   期望：全部成功。
-- [ ] **Step 2:** 更新质量计划外置表：B1/B7 → 指向本计划（或标记进行中/完成）。
+- [x] **Step 2:** 更新质量计划外置表：B1/B7 → 指向本计划（或标记进行中/完成）。
 - [ ] **Verify:** 同 Step 1；另：  
   ```bash
   rg -n 'from main import|import main' pyserver/analyst.py; test $? -eq 1

@@ -28,7 +28,7 @@
 
 | 原任务 | 理由 | 后续计划建议 |
 |--------|------|----------------|
-| B1 拆分 `main.py`、B2 大块去重、B7 拆 analyst 循环依赖 | 高风险边界重构；与正确性任务抢 `main.py`；B1 须同步改 CI `import` 清单 | `docs/plans/…-pyserver-modularize.md` |
+| B1 拆分 `main.py`、B2 大块去重、B7 拆 analyst 循环依赖 | 高风险边界重构；与正确性任务抢 `main.py`；B1 须同步改 CI `import` 清单 | **Done on `feat/pyserver-modularize`** — 见 [`docs/plans/2026-08-05-pyserver-modularize.md`](2026-08-05-pyserver-modularize.md)（B1/B7 已落地；B2 大块去重仍外置） |
 | D1 拆 `deepseek.ts`、D2 泛型评分编排 | import fan-out 大；D2 易过度抽象 | `docs/plans/…-web-llm-modularize.md` |
 | F1 README 脚本引用 | 前提错误：`scripts/monitor-dashboard.sh` 与 `scripts/macos/README.md` 均存在 | —（删除） |
 
