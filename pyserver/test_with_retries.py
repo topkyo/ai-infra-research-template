@@ -15,7 +15,7 @@ class WithRetriesBackoffTest(unittest.TestCase):
             raise boom
 
         with (
-            patch.object(main.time, "sleep") as mock_sleep,
+            patch("http_util.time.sleep") as mock_sleep,
             self.assertRaises(RuntimeError) as ctx,
         ):
             main._with_retries(always_fail, attempts=3, base_delay=0.5)
@@ -34,7 +34,7 @@ class WithRetriesBackoffTest(unittest.TestCase):
                 raise RuntimeError("transient")
             return "ok"
 
-        with patch.object(main.time, "sleep") as mock_sleep:
+        with patch("http_util.time.sleep") as mock_sleep:
             result = main._with_retries(fail_twice, attempts=3, base_delay=0.25)
 
         self.assertEqual(result, "ok")

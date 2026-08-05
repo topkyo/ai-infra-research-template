@@ -73,15 +73,7 @@ def _ak_call(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-def _with_retries(
-    fn,
-    *args,
-    attempts: int = 3,
-    base_delay: float = 0.5,
-    _sleep=None,
-    **kwargs,
-):
-    sleep = _sleep or time.sleep
+def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwargs):
     last: Exception | None = None
     for i in range(attempts):
         try:
@@ -89,6 +81,6 @@ def _with_retries(
         except Exception as e:  # noqa: BLE001
             last = e
             if i < attempts - 1:
-                sleep(base_delay * (2 ** i))
+                time.sleep(base_delay * (2 ** i))
     assert last is not None
     raise last

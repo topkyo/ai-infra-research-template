@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -16,10 +16,8 @@ def seconds_until_next_trading_close(
     _timedelta=None,
 ) -> int:
     """TTL so daily klines refresh after the next 15:30 CN market close."""
-    from datetime import datetime as dt, timedelta as td
-
-    now_fn = _now or dt.now
-    delta = _timedelta or td
+    now_fn = _now or datetime.now
+    delta = _timedelta or timedelta
     now = now_fn()
     target = now.replace(hour=15, minute=30, second=0, microsecond=0)
     if now >= target:

@@ -38,6 +38,7 @@ from config import (
     STRICT_LIVE_DATA,
     TUSHARE_TOKEN,
     _QUOTE_SOURCE_KEY,
+    _strip_proxy_env,
     log,
 )
 from util import (
@@ -46,19 +47,20 @@ from util import (
     _market_cap_to_yi,
     _num_or_none,
     _source_summary,
-    seconds_until_next_trading_close as _seconds_until_next_trading_close,
+    seconds_until_next_trading_close,
 )
 from http_util import (
     _AK_LOCK,
     _BS_LOCK,
     _DAILY_BASIC_LIMITER,
     _FINA_INDICATOR_LIMITER,
+    _MARKET_HTTP_SESSION,
     _REPORT_RC_LIMITER,
     _TokenBucket,
     _ak_call,
     _market_http_get,
     _market_http_session,
-    _with_retries as _with_retries_impl,
+    _with_retries,
 )
 from models import Analyst, Fundamental, Kline, Spot
 from symbols import (
@@ -69,21 +71,6 @@ from symbols import (
     _infer_market_prefix,
     _to_ts_code,
 )
-
-
-def seconds_until_next_trading_close() -> int:
-    return _seconds_until_next_trading_close(_now=datetime.now, _timedelta=timedelta)
-
-
-def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwargs):
-    return _with_retries_impl(
-        fn,
-        *args,
-        attempts=attempts,
-        base_delay=base_delay,
-        _sleep=time.sleep,
-        **kwargs,
-    )
 
 
 # Cache lives in cache.py; importing it here (after .env is loaded) resolves

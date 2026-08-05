@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import main
+import util
 
 
 class ToTsCodeTest(unittest.TestCase):
@@ -31,7 +32,7 @@ class SecondsUntilNextTradingCloseTest(unittest.TestCase):
     def test_before_close_same_day(self) -> None:
         now = datetime(2026, 8, 4, 10, 0, 0)
         expected = int((now.replace(hour=15, minute=30) - now).total_seconds())
-        with patch.object(main, "datetime") as mock_dt:
+        with patch.object(util, "datetime") as mock_dt:
             mock_dt.now.return_value = now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             self.assertEqual(main.seconds_until_next_trading_close(), expected)
@@ -40,7 +41,7 @@ class SecondsUntilNextTradingCloseTest(unittest.TestCase):
         now = datetime(2026, 8, 4, 16, 0, 0)
         target = now.replace(hour=15, minute=30) + timedelta(days=1)
         expected = int((target - now).total_seconds())
-        with patch.object(main, "datetime") as mock_dt:
+        with patch.object(util, "datetime") as mock_dt:
             mock_dt.now.return_value = now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             self.assertEqual(main.seconds_until_next_trading_close(), expected)
@@ -49,7 +50,7 @@ class SecondsUntilNextTradingCloseTest(unittest.TestCase):
         now = datetime(2026, 8, 4, 15, 30, 0)
         target = now.replace(hour=15, minute=30) + timedelta(days=1)
         expected = int((target - now).total_seconds())
-        with patch.object(main, "datetime") as mock_dt:
+        with patch.object(util, "datetime") as mock_dt:
             mock_dt.now.return_value = now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             self.assertEqual(main.seconds_until_next_trading_close(), expected)
