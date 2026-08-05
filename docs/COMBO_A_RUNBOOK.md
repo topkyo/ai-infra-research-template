@@ -109,7 +109,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
 - [ ] **模式 A：** 私有 HTTPS 正常，且 **Basic Auth 已生效**（未认证被拒绝）。
 - [ ] 公开 URL（可选）：Vercel/Pages 静态快照为最近一次 `snapshot.ts` 输出。
 - [ ] **安全**：外网无法访问 `:8001`；API key 与 `private/holdings.local.json` 未进入公开仓库或 `docs/data/`。
-- [ ] 日常更新公开快照：`snapshot.ts` → 提交 `docs/data/` → Vercel 自动或手动部署。
+- [ ] 日常更新公开快照（VPS 一键）：`cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh`（详见 [OPERATIONS.md](OPERATIONS.md)「静态快照」）。
 - [ ] 持仓文件权限建议：`chmod 600 private/holdings.local.json`。
 
 ## H. 磁盘与监控

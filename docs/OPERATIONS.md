@@ -143,11 +143,34 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 
 ## 静态快照
 
-完整刷新需要 pyserver 正常运行，并在 `web/.env.local` 配置 LLM key：
+### 狗云 VPS 一键（推荐）
+
+在 VPS 仓库根目录执行（compose 健康 + 宿主机跑 `snapshot.ts` + Vercel 部署）：
 
 ```bash
-cd web
-npx tsx scripts/snapshot.ts
+cd ~/github/ai-infra-dashboard
+./scripts/vps-refresh-public-snapshot.sh
+```
+
+说明：
+
+- **必须在宿主机跑 snapshot**，不要用生产 `web` 镜像（镜像里没有 `lib/`，会报 `Cannot find module '/app/lib/universe'`）。
+- 脚本会从根目录 `.env` 生成 `web/.env.local`，并强制 `PYSERVER_URL=http://127.0.0.1:8001`。
+- 部署读取 `~/scripts/.vercel-token`（或环境变量 `VERCEL_TOKEN`）。
+- 轻量刷新：`SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh`
+- 只生成不部署：`SKIP_DEPLOY=1 ./scripts/vps-refresh-public-snapshot.sh`
+- 生成后顺带 commit/push：`GIT_COMMIT_DOCS=1 ./scripts/vps-refresh-public-snapshot.sh`
+
+公开站：https://ai-infra-dashboard-docs.vercel.app
+
+### 本机手动
+
+完整刷新需要本机 pyserver 正常运行，并在 `web/.env.local` 配置 LLM key：
+
+```bash
+./start.sh   # 另开终端，确保 :8001 可用
+cd web && npx tsx scripts/snapshot.ts
+cd .. && ./scripts/deploy-public-snapshot.sh   # 必须在仓库根目录
 ```
 
 常用覆盖项：
