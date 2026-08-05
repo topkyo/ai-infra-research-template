@@ -142,3 +142,118 @@ test("applyRefresh bumps updated_at when a symbol is reclassified", async () => 
   assert.notEqual(next.updated_at, baseUniverse.updated_at);
   assert.equal(next.updated_by, "deepseek-refresh");
 });
+
+test("validateRefreshProposal accepts an empty object as a no-op proposal", async () => {
+  const { validateRefreshProposal } = await import("../lib/universe-refresh");
+  assert.deepEqual(validateRefreshProposal({}), {
+    adds: [],
+    removes: [],
+    reclassifies: [],
+    rationale: "",
+  });
+});
+
+test("validateRefreshProposal accepts a well-formed proposal", async () => {
+  const { validateRefreshProposal } = await import("../lib/universe-refresh");
+  const proposal = validateRefreshProposal({
+    adds: [{ symbol: "300476", name: "胜宏科技", theme: "AI-PCB", note: "龙头", global_supply: true }],
+    removes: ["000001"],
+    reclassifies: [{ symbol: "600000", theme: "算力/AI芯片" }],
+    rationale: "补齐 AI-PCB",
+  });
+  assert.equal(proposal.adds.length, 1);
+  assert.equal(proposal.adds[0].global_supply, true);
+  assert.deepEqual(proposal.removes, ["000001"]);
+  assert.equal(proposal.reclassifies[0].theme, "算力/AI芯片");
+  assert.equal(proposal.rationale, "补齐 AI-PCB");
+});
+
+test("validateRefreshProposal rejects non-object top-level values", async () => {
+  const { validateRefreshProposal } = await import("../lib/universe-refresh");
+  for (const bad of [null, "string", 42, []]) {
+    assert.throws(
+      () => validateRefreshProposal(bad),
+      /universe refresh proposal must be a JSON object/,
+    );
+  }
+});
+
+test("validateRefreshProposal rejects malformed adds", async () => {
+  const { validateRefreshProposal } = await import("../lib/universe-refresh");
+  assert.throws(
+    () => validateRefreshProposal({ adds: "not-array" }),
+    /adds must be an array/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ adds: [null] }),
+    /adds\[0\] must be an object/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ adds: [{ name: "x", theme: "y" }] }),
+    /adds\[0\]\.symbol must be a non-empty string/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ adds: [{ symbol: "300476", theme: "AI-PCB" }] }),
+    /adds\[0\]\.name must be a non-empty string/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ adds: [{ symbol: "300476", name: "胜宏", global_supply: "yes" }] }),
+    /adds\[0\]\.theme must be a non-empty string/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({
+      adds: [{ symbol: "300476", name: "胜宏", theme: "AI-PCB", global_supply: "yes" }],
+    }),
+    /adds\[0\]\.global_supply must be a boolean/,
+  );
+});
+
+test("validateRefreshProposal rejects malformed removes and reclassifies", async () => {
+  const { validateRefreshProposal } = await import("../lib/universe-refresh");
+  assert.throws(
+    () => validateRefreshProposal({ removes: {} }),
+    /removes must be an array/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ removes: [123] }),
+    /removes\[0\] must be a string/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ reclassifies: "bad" }),
+    /reclassifies must be an array/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ reclassifies: [{ symbol: "000001" }] }),
+    /reclassifies\[0\]\.theme must be a non-empty string/,
+  );
+  assert.throws(
+    () => validateRefreshProposal({ rationale: 123 }),
+    /rationale must be a string/,
+  );
+});
+
+test("proposeRefresh rejects malformed LLM JSON before touching universe file", async () => {
+  writeBase();
+  const before = readRaw();
+  const { proposeRefresh } = await import("../lib/universe-refresh");
+  const originalFetch = globalThis.fetch;
+  process.env.LLM_PROVIDER = "deepseek";
+  process.env.DEEPSEEK_API_KEY = "sk-test";
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    choices: [{ message: { content: JSON.stringify({ adds: "not-an-array" }) } }],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => proposeRefresh(baseUniverse),
+      /adds must be an array/,
+    );
+    assert.equal(readRaw(), before);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.LLM_PROVIDER;
+    delete process.env.DEEPSEEK_API_KEY;
+  }
+});

@@ -59,6 +59,102 @@ function envPositiveInt(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Runtime shape check for LLM JSON — rejects malformed proposals before apply. */
+export function validateRefreshProposal(value: unknown): RefreshProposal {
+  if (!isRecord(value)) {
+    throw new Error("universe refresh proposal must be a JSON object");
+  }
+
+  const adds: UniverseEntry[] = [];
+  if (value.adds !== undefined) {
+    if (!Array.isArray(value.adds)) {
+      throw new Error("universe refresh proposal adds must be an array");
+    }
+    for (let i = 0; i < value.adds.length; i++) {
+      const item = value.adds[i];
+      if (!isRecord(item)) {
+        throw new Error(`universe refresh proposal adds[${i}] must be an object`);
+      }
+      const symbol = typeof item.symbol === "string" ? item.symbol.trim() : "";
+      const name = typeof item.name === "string" ? item.name.trim() : "";
+      const theme = typeof item.theme === "string" ? item.theme.trim() : "";
+      if (!symbol) {
+        throw new Error(`universe refresh proposal adds[${i}].symbol must be a non-empty string`);
+      }
+      if (!name) {
+        throw new Error(`universe refresh proposal adds[${i}].name must be a non-empty string`);
+      }
+      if (!theme) {
+        throw new Error(`universe refresh proposal adds[${i}].theme must be a non-empty string`);
+      }
+      const entry: UniverseEntry = { symbol, name, theme };
+      if (item.note !== undefined) {
+        if (typeof item.note !== "string") {
+          throw new Error(`universe refresh proposal adds[${i}].note must be a string`);
+        }
+        entry.note = item.note;
+      }
+      if (item.global_supply !== undefined) {
+        if (typeof item.global_supply !== "boolean") {
+          throw new Error(`universe refresh proposal adds[${i}].global_supply must be a boolean`);
+        }
+        entry.global_supply = item.global_supply;
+      }
+      adds.push(entry);
+    }
+  }
+
+  const removes: string[] = [];
+  if (value.removes !== undefined) {
+    if (!Array.isArray(value.removes)) {
+      throw new Error("universe refresh proposal removes must be an array");
+    }
+    for (let i = 0; i < value.removes.length; i++) {
+      const item = value.removes[i];
+      if (typeof item !== "string") {
+        throw new Error(`universe refresh proposal removes[${i}] must be a string`);
+      }
+      removes.push(item);
+    }
+  }
+
+  const reclassifies: { symbol: string; theme: string }[] = [];
+  if (value.reclassifies !== undefined) {
+    if (!Array.isArray(value.reclassifies)) {
+      throw new Error("universe refresh proposal reclassifies must be an array");
+    }
+    for (let i = 0; i < value.reclassifies.length; i++) {
+      const item = value.reclassifies[i];
+      if (!isRecord(item)) {
+        throw new Error(`universe refresh proposal reclassifies[${i}] must be an object`);
+      }
+      const symbol = typeof item.symbol === "string" ? item.symbol.trim() : "";
+      const theme = typeof item.theme === "string" ? item.theme.trim() : "";
+      if (!symbol) {
+        throw new Error(`universe refresh proposal reclassifies[${i}].symbol must be a non-empty string`);
+      }
+      if (!theme) {
+        throw new Error(`universe refresh proposal reclassifies[${i}].theme must be a non-empty string`);
+      }
+      reclassifies.push({ symbol, theme });
+    }
+  }
+
+  let rationale = "";
+  if (value.rationale !== undefined) {
+    if (typeof value.rationale !== "string") {
+      throw new Error("universe refresh proposal rationale must be a string");
+    }
+    rationale = value.rationale;
+  }
+
+  return { adds, removes, reclassifies, rationale };
+}
+
 export async function proposeRefresh(
   current: UniverseFile,
 ): Promise<RefreshProposal> {
@@ -78,13 +174,8 @@ export async function proposeRefresh(
     ],
     { responseFormat: "json_object", temperature: 0.3, bypassCache: true, timeoutMs },
   );
-  const parsed = JSON.parse(raw) as Partial<RefreshProposal>;
-  return {
-    adds: parsed.adds ?? [],
-    removes: parsed.removes ?? [],
-    reclassifies: parsed.reclassifies ?? [],
-    rationale: parsed.rationale ?? "",
-  };
+  const parsed: unknown = JSON.parse(raw);
+  return validateRefreshProposal(parsed);
 }
 
 /** Validate a symbol by calling pyserver /fundamental. Returns true if pyserver
