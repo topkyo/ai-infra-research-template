@@ -65,7 +65,7 @@ export default function SignalsClient() {
     if (started.current) return;
     started.current = true;
     void run("real");
-  }, []);
+  }, [run]);
 
   const actionCount = useMemo(() => ({
     open: rows.filter((r) => r.recommendation.action === "open").length,

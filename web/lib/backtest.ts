@@ -345,10 +345,16 @@ export async function runBacktest(
           equity += shares[sym] * prices[sym];
         }
       }
-      const totalWeight = buys.reduce((sum, s) => sum + s.size * s.confidence, 0) || 1;
+      // Empty buys → empty targets (exits handled below). Non-empty with all-zero
+      // confidence falls back to equal weight so we never divide by zero.
       const targetValue = new Map<string, number>();
-      for (const sig of buys) {
-        targetValue.set(sig.symbol, equity * ((sig.size * sig.confidence) / totalWeight));
+      if (buys.length > 0) {
+        const weightSum = buys.reduce((sum, s) => sum + s.size * s.confidence, 0);
+        const totalWeight = weightSum > 0 ? weightSum : buys.length;
+        for (const sig of buys) {
+          const w = weightSum > 0 ? sig.size * sig.confidence : 1;
+          targetValue.set(sig.symbol, equity * (w / totalWeight));
+        }
       }
 
       const skipUntradable = (sym: string) => {
