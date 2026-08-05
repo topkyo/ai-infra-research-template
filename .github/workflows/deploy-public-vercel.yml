@@ -12,8 +12,8 @@
 #
 # Uses `vercel deploy` directly (not amondnet/vercel-action): project-scoped
 # tokens return 404 on /v2/user, which breaks whoami-based actions.
-# If secrets are missing or deploy fails, the workflow warns and succeeds —
-# public snapshot deploy is optional.
+# If secrets are missing, the workflow notices and succeeds (optional deploy).
+# If secrets are configured and deploy fails, the workflow fails (exit 1).
 
 name: deploy-public-vercel
 
@@ -63,7 +63,8 @@ jobs:
           printf '%s\n' "{\"projectId\":\"${VERCEL_PROJECT_ID}\",\"orgId\":\"${VERCEL_ORG_ID}\"}" > .vercel/project.json
           npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN"
 
-      - name: Surface optional deploy failure
+      - name: Fail workflow when configured deploy failed
         if: steps.secrets.outputs.configured == 'true' && steps.deploy.outcome != 'success'
         run: |
-          echo "::warning title=Vercel deploy failed::Public snapshot deploy is optional. Rotate token if needed (Vercel → Tokens), then: gh secret set VERCEL_TOKEN. Project-scoped vcp_ tokens are supported by this workflow."
+          echo "::error title=Vercel deploy failed::Public snapshot deploy failed. Rotate token if needed (Vercel → Tokens), then: gh secret set VERCEL_TOKEN. Re-run: gh workflow run deploy-public-vercel.yml. Project-scoped vcp_ tokens are supported by this workflow."
+          exit 1

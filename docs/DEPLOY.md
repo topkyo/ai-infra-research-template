@@ -232,3 +232,14 @@ git commit -m "chore: refresh public snapshot"
 | 外网可访问 8001 | 检查 `docker-compose.yml` 端口是否为 `127.0.0.1:8001`；确认防火墙与 Caddy 未反代 8001。 |
 | Compose 启动失败（web） | 确认 `private/holdings.local.json` 已存在（见 [private/README.md](../private/README.md)）。 |
 | 磁盘使用率 ≥85% 告警 | 多为 Docker build cache / 旧镜像（`/var/lib/containerd`）。跑 `~/scripts/docker-disk-prune.sh`；确认 weekly cron（见 Runbook §H）。勿 `prune --volumes`。 |
+
+## 7. 备份
+
+生产 VPS 上 **`web-cache`**（回测存档，换模型后不可复现）与 **`private/holdings.local.json`**（真实持仓）不在 git 中，需定期离线备份。
+
+| 资产 | 位置 | 建议 |
+|---|---|---|
+| 回测 + LLM SQLite | Docker volume `web-cache` → 容器 `/app/.cache/web.db` | 每周或改模型前； tarball 归档 |
+| 真实持仓 | `./private/holdings.local.json` | 每日或改仓后； rsync / 私有 git |
+
+完整命令、恢复流程与「勿提交密钥」清单见 **[BACKUP_RUNBOOK.md](BACKUP_RUNBOOK.md)**。

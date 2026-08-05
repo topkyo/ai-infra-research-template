@@ -86,7 +86,16 @@ ssh -L 3000:127.0.0.1:3000 goyun
 - [ ] **Root Directory** = `docs`
 - [ ] **Framework Preset** = Other（无 build command）
 - [ ] 可选：配置 GitHub Actions secrets（`VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`）以启用 [.github/workflows/deploy-public-vercel.yml](../.github/workflows/deploy-public-vercel.yml)。
-- [ ] Token 失效/撤销时（Actions 出现 `token … is not valid`）：在 Vercel → Account Settings → Tokens 新建 token，然后 `gh secret set VERCEL_TOKEN` 粘贴新值；`ORG_ID`/`PROJECT_ID` 一般无需改。公开面部署为可选：token 不可用时 workflow 会 warning 并跳过，不挡 `ci`。
+- [ ] **确认最近一次公开快照部署成功**（secrets 已配置时）：
+  1. GitHub → Actions → **deploy-public-vercel** → 最近一次 run 为绿色，且 **Deploy static docs snapshot to Vercel** 步骤成功。
+  2. Vercel 项目 → **Deployments** → 最新 **Production** 部署时间与上述 run 一致；打开生产 URL 核对 `docs/data/` 内容。
+  3. 未配置 secrets 时 workflow 会 `notice` 跳过部署，属预期，不代表线上已更新。
+- [ ] **Token 轮换与重跑**（Actions 出现 `token … is not valid` 或 deploy 步骤失败、workflow 变红）：
+  1. Vercel → Account Settings → **Tokens** → 新建 token（项目级 `vcp_…` 亦可）。
+  2. `gh secret set VERCEL_TOKEN` 粘贴新值；`VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` 一般无需改。
+  3. 重跑：`gh workflow run deploy-public-vercel.yml`（或在 Actions UI 选 **Run workflow**）。
+  4. 确认 run 变绿后再验收生产 URL。
+- [ ] 未配置 secrets 时：公开面部署为可选，workflow 会 notice 并跳过，不挡 `ci`；配置 secrets 后 deploy 失败会使 workflow 变红。
 - [ ] 本地或 VPS 生成**首次快照**（需 pyserver + LLM key；本地开发见 [docs/README.md](README.md)）：
   ```bash
   cd web && npx tsx scripts/snapshot.ts
