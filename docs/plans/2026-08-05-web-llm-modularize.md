@@ -39,10 +39,10 @@
 - Modify: `web/lib/deepseek.ts`（改为 import + re-export 这三块；评分逻辑暂留）
 - Test: `web/test/deepseek.test.ts`（transport / chatDetailed 相关）
 
-- [ ] **Step 1:** 迁入全部 export 的 types/interfaces/type aliases 到 `types.ts`。
-- [ ] **Step 2:** 迁入 `LlmHttpError`、retry helpers、`chatDetailed`、`chat` 到 `transport.ts`（从 `types` import 消息类型）。
-- [ ] **Step 3:** 迁入两个 STRATEGY 系统提示到 `prompts.ts`。
-- [ ] **Step 4:** `deepseek.ts` 删除已迁定义，`export type` / `export { ... } from "./llm/..."`，其余评分代码暂留并改 import。
+- [x] **Step 1:** 迁入全部 export 的 types/interfaces/type aliases 到 `types.ts`。
+- [x] **Step 2:** 迁入 `LlmHttpError`、retry helpers、`chatDetailed`、`chat` 到 `transport.ts`（从 `types` import 消息类型）。
+- [x] **Step 3:** 迁入两个 STRATEGY 系统提示到 `prompts.ts`。
+- [x] **Step 4:** `deepseek.ts` 删除已迁定义，`export type` / `export { ... } from "./llm/..."`，其余评分代码暂留并改 import。
 - [ ] **Verify:**  
   ```bash
   cd web && npm test -- --test-name-pattern='chatDetailed|retry|LlmHttpError|isRetryable' 2>/dev/null || \
@@ -65,9 +65,9 @@
 - Modify: `web/lib/deepseek.ts`
 - Test: `web/test/deepseek.test.ts`, `web/test/llm-mock.test.ts`
 
-- [ ] **Step 1:** 迁入 normalize*、strictWeight/strictSignalField、isStrictLlmOutputError、repair、chunks/sleep/signalSource、env helpers、VALID_ACTIONS / MIN_SCORABLE / batch 常量中**仅被 strict/mock/score 共享**的部分到 `strict.ts`（或 score 旁局部常量——Freeze 下保持同一数值来源，避免双份默认值）。
-- [ ] **Step 2:** 迁入 mock 三函数到 `mock.ts`。
-- [ ] **Step 3:** `deepseek.ts` re-export 任何仍被外部需要的符号；评分函数暂留。
+- [x] **Step 1:** 迁入 normalize*、strictWeight/strictSignalField、isStrictLlmOutputError、repair、chunks/sleep/signalSource、env helpers、VALID_ACTIONS / MIN_SCORABLE / batch 常量中**仅被 strict/mock/score 共享**的部分到 `strict.ts`（或 score 旁局部常量——Freeze 下保持同一数值来源，避免双份默认值）。
+- [x] **Step 2:** 迁入 mock 三函数到 `mock.ts`。
+- [x] **Step 3:** `deepseek.ts` re-export 任何仍被外部需要的符号；评分函数暂留。
 - [ ] **Verify:**  
   ```bash
   cd web && npm test && ./node_modules/.bin/tsc --noEmit
@@ -85,10 +85,10 @@
 - Modify: `web/lib/deepseek.ts` → **仅** re-export（无业务函数体）
 - Test: 全量 web tests + 依赖 deepseek 的 lib 编译
 
-- [ ] **Step 1:** 迁入 `scoreSymbols` / batch / 相关私有 helper 到 `score-symbols.ts`。
-- [ ] **Step 2:** 迁入 `scorePortfolioTargets` / batch 到 `score-portfolio.ts`。
-- [ ] **Step 3:** `deepseek.ts` 清成薄桶，显式导出对外 API 清单（至少：`chat`, `chatDetailed`, `scoreSymbols`, `scorePortfolioTargets`, `LlmHttpError`, `isRetryableTransportError`, `retryDelayMs`，以及所有被 web/lib 与 tests 使用的 types）。用 `rg "from [\"'].*deepseek" web` 核对清单。
-- [ ] **Step 4:** 确认无循环：score → strict/transport/prompts/types/mock；桶不反向被 llm 内部 import（llm 内部互 import 允许）。
+- [x] **Step 1:** 迁入 `scoreSymbols` / batch / 相关私有 helper 到 `score-symbols.ts`。
+- [x] **Step 2:** 迁入 `scorePortfolioTargets` / batch 到 `score-portfolio.ts`。
+- [x] **Step 3:** `deepseek.ts` 清成薄桶，显式导出对外 API 清单（至少：`chat`, `chatDetailed`, `scoreSymbols`, `scorePortfolioTargets`, `LlmHttpError`, `isRetryableTransportError`, `retryDelayMs`，以及所有被 web/lib 与 tests 使用的 types）。用 `rg "from [\"'].*deepseek" web` 核对清单。
+- [x] **Step 4:** 确认无循环：score → strict/transport/prompts/types/mock；桶不反向被 llm 内部 import（llm 内部互 import 允许）。
 - [ ] **Verify:**  
   ```bash
   cd web && npm test && ./node_modules/.bin/tsc --noEmit
@@ -109,8 +109,8 @@
 - Modify: `docs/plans/2026-08-04-quality-remediation.md`（D1 行 → 本计划 / done）
 - Modify: 本计划 checkbox 勾选
 
-- [ ] **Step 1:** 更新质量计划外置表 D1 指向 `docs/plans/2026-08-05-web-llm-modularize.md` 并标注落地分支/完成。
-- [ ] **Step 2:** Final gate：  
+- [x] **Step 1:** 更新质量计划外置表 D1 指向 `docs/plans/2026-08-05-web-llm-modularize.md` 并标注落地分支/完成。
+- [x] **Step 2:** Final gate：  
   ```bash
   cd web && npm test && ./node_modules/.bin/tsc --noEmit
   wc -l web/lib/deepseek.ts   # 应为短桶（量级数十行）
