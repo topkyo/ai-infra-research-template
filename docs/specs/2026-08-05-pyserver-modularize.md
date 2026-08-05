@@ -1,7 +1,7 @@
 # pyserver modularize（Wave 3 切片 A）
 
 **Date:** 2026-08-05  
-**Status:** Draft (pending user review)  
+**Status:** Approved  
 **Product:** topkyo AI 基建研究台  
 **Program:** Wave 3 = 切片 A（本 spec）→ 切片 B（`deepseek.ts` modularize，另立 spec）
 
