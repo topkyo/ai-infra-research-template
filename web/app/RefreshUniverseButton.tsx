@@ -98,21 +98,39 @@ export default function RefreshUniverseButton({
               </div>
             </>
           )}
-          {logs.length > 0 && (
-            <pre style={{ marginTop: 8, whiteSpace: "pre-wrap", maxHeight: 160, overflow: "auto" }}>
-              {logs.join("\n")}
-            </pre>
-          )}
-          {error && <p style={{ color: "var(--danger)", marginTop: 8 }}>{error}</p>}
+          <div style={{ marginTop: 8, color: "var(--muted)", maxHeight: 200, overflow: "auto" }}>
+            {logs.map((l, i) => <div key={i}>· {l}</div>)}
+          </div>
+          {error && <div style={{ color: "var(--danger)", marginTop: 8 }}>{error}</div>}
           {result && (
-            <div style={{ marginTop: 8 }}>
-              <p>{result.proposal.rationale}</p>
-              <p style={{ color: "var(--muted)" }}>
-                +{result.applied.added.length}
-                {" / -"}{result.applied.removed.length}
-                {" / 改类 "}{result.applied.reclassified.length}
-                {" → 共 "}{result.finalCount} 只
-              </p>
+            <div style={{ marginTop: 10 }}>
+              <strong>刷新完成</strong> · 当前 {result.finalCount} 只
+              <div style={{ marginTop: 4 }}>
+                新增 {result.applied.added.length} · 移除 {result.applied.removed.length} · 改类 {result.applied.reclassified.length} · 拒绝 {result.applied.rejected.length}
+              </div>
+              {result.proposal.rationale && (
+                <div style={{ marginTop: 6 }}>{result.proposal.rationale}</div>
+              )}
+              {result.applied.added.length > 0 && (
+                <div style={{ marginTop: 6, color: "var(--accent)" }}>
+                  + {result.applied.added.map((a) => `${a.symbol} ${a.name}(${a.theme})`).join("、")}
+                </div>
+              )}
+              {result.applied.removed.length > 0 && (
+                <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                  − {result.applied.removed.join("、")}
+                </div>
+              )}
+              {result.applied.reclassified.length > 0 && (
+                <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                  改类：{result.applied.reclassified.map((r) => `${r.symbol} ${r.from}→${r.to}`).join("；")}
+                </div>
+              )}
+              {result.applied.rejected.length > 0 && (
+                <div style={{ marginTop: 6, color: "var(--danger)" }}>
+                  拒绝：{result.applied.rejected.map((r) => `${r.symbol}: ${r.reason}`).join("; ")}
+                </div>
+              )}
             </div>
           )}
         </div>
