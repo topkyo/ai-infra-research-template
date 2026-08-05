@@ -1,13 +1,16 @@
 # Combo A — private research dashboard (Next.js web only).
 # Copy to your VPS, replace app.example.com, then reload Caddy.
 # pyserver (127.0.0.1:8001) is NOT exposed; web talks to it inside Docker.
+#
+# Mode A (public HTTPS): Basic Auth is REQUIRED — universe refresh has no
+# app-layer token. Generate a hash, then replace REPLACE_WITH_HASH below:
+#   caddy hash-password
+# Do NOT reload this file until the placeholder hash is replaced.
 
 app.example.com {
-	# Required for Mode A (public HTTPS): generate hash with `caddy hash-password`.
-	# Universe refresh has no app-layer token — this is the gate.
-	# basicauth {
-	# 	admin JDJhJDE0$REPLACE_WITH_caddy_hash-password_OUTPUT
-	# }
+	basicauth {
+		admin REPLACE_WITH_HASH
+	}
 
 	reverse_proxy 127.0.0.1:3000
 }

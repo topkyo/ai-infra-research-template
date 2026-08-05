@@ -183,7 +183,7 @@ docker compose down
 
 1. 复制 [deploy/Caddyfile.example](../deploy/Caddyfile.example) 到 VPS（例如 `/etc/caddy/Caddyfile`）。
 2. 将 `app.example.com` 替换为真实域名，DNS A/AAAA 指向 VPS。
-3. 可选：取消注释 `basicauth` 块并设置密码哈希。
+3. **必须**（Mode A）：用 `caddy hash-password` 替换 `basicauth` 中的 `REPLACE_WITH_HASH`（示例默认已启用 Basic Auth；占位不可用）。
 4. 防火墙仅开放 80/443（见 [deploy/README.md](../deploy/README.md)）。
 
 API key 只放在容器环境变量中，不会写入前端 bundle。

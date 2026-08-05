@@ -23,7 +23,7 @@ Other platforms: [https://caddyserver.com/docs/install](https://caddyserver.com/
    sudo nano /etc/caddy/Caddyfile   # replace app.example.com; point DNS A/AAAA to this VPS
    ```
 
-3. Optional Basic Auth: uncomment the `basicauth` block in `Caddyfile.example`, run `caddy hash-password`, paste the hash, reload.
+3. **Required for Mode A:** `basicauth` is enabled by default in `Caddyfile.example`. Run `caddy hash-password`, replace `REPLACE_WITH_HASH`, then reload. Do not expose the app without a real hash.
 
 4. Validate and reload:
 

@@ -75,8 +75,8 @@ ssh -L 3000:127.0.0.1:3000 goyun
 
 - [ ] 安装 Caddy（见 [deploy/README.md](../deploy/README.md)）。
 - [ ] `sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile`，替换域名。
-- [ ] **必须**启用 **Basic Auth**（`caddy hash-password` + 取消注释 `basicauth` 块）——股票池刷新无应用层令牌，公网入口靠 Caddy。
-- [ ] `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`
+- [ ] **必须**配置 **Basic Auth**：`caddy hash-password`，把输出写入 `basicauth` 的 `REPLACE_WITH_HASH`（示例默认已启用 `basicauth`，占位 hash 不可用）——股票池刷新无应用层令牌，公网入口靠 Caddy。
+- [ ] 确认文件中**没有** `REPLACE_WITH_HASH` 后再 `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`。
 - [ ] 浏览器访问 `https://<私有域名>`，确认研究台可加载；未认证应被拒绝。
 - [ ] 再次确认 Caddy **仅** `reverse_proxy 127.0.0.1:3000`，**不含** `:8001` 反代。
 
@@ -86,6 +86,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
 - [ ] **Root Directory** = `docs`
 - [ ] **Framework Preset** = Other（无 build command）
 - [ ] 可选：配置 GitHub Actions secrets（`VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`）以启用 [.github/workflows/deploy-public-vercel.yml](../.github/workflows/deploy-public-vercel.yml)。
+- [ ] Token 失效/撤销时（Actions 出现 `token … is not valid`）：在 Vercel → Account Settings → Tokens 新建 token，然后 `gh secret set VERCEL_TOKEN` 粘贴新值；`ORG_ID`/`PROJECT_ID` 一般无需改。公开面部署为可选：token 不可用时 workflow 会 warning 并跳过，不挡 `ci`。
 - [ ] 本地或 VPS 生成**首次快照**（需 pyserver + LLM key；本地开发见 [docs/README.md](README.md)）：
   ```bash
   cd web && npx tsx scripts/snapshot.ts
@@ -96,7 +97,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
 ## G. 最终验收
 
 - [ ] **模式 B：** SSH 隧道后本机可打开 `http://127.0.0.1:3000`；公网 IP 的 `:3000`/`:8001` 不可达。
-- [ ] **模式 A：** 私有 HTTPS 正常，建议启用 Basic Auth。
+- [ ] **模式 A：** 私有 HTTPS 正常，且 **Basic Auth 已生效**（未认证被拒绝）。
 - [ ] 公开 URL（可选）：Vercel/Pages 静态快照为最近一次 `snapshot.ts` 输出。
 - [ ] **安全**：外网无法访问 `:8001`；API key 与 `private/holdings.local.json` 未进入公开仓库或 `docs/data/`。
 - [ ] 日常更新公开快照：`snapshot.ts` → 提交 `docs/data/` → Vercel 自动或手动部署。
