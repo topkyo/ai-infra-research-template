@@ -130,7 +130,7 @@ from validation import (  # noqa: E402, F401
     _validate_symbol,
 )
 
-from analyst import register_routes as register_analyst_routes  # noqa: E402
+from analyst import analyst, analysts, register_routes as register_analyst_routes  # noqa: E402, F401
 from routes import register_routes  # noqa: E402
 from routes.benchmarks import benchmark_klines, list_benchmarks  # noqa: F401
 from routes.fundamental import fundamental  # noqa: F401
