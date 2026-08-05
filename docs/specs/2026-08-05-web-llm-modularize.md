@@ -1,7 +1,7 @@
 # web LLM modularize（Wave 3 切片 B）
 
 **Date:** 2026-08-05  
-**Status:** Draft (pending user review)  
+**Status:** Approved  
 **Product:** topkyo AI 基建研究台  
 **Program:** Wave 3 = 切片 A（pyserver，已落地）→ 切片 B（本 spec）
 
