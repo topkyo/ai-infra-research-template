@@ -131,8 +131,8 @@ class EndpointIntegrationTest(unittest.TestCase):
         }
         with (
             patch.object(main, "MOCK_MODE", False),
-            patch.object(main, "_ak_a_spot_rows", return_value=None),
-            patch.object(main, "_sina_a_spot_rows", return_value=sina_row),
+            patch("providers.akshare_spot._ak_a_spot_rows", return_value=None),
+            patch("providers.akshare_spot._sina_a_spot_rows", return_value=sina_row),
             patch.object(main, "_resolve_name", return_value="寒武纪-U"),
         ):
             resp = client.get("/spot", params={"symbol": "sh688256"})

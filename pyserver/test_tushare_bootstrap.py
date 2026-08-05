@@ -18,12 +18,12 @@ class TushareBootstrapTest(unittest.TestCase):
         self.cache_db = str(Path(self.tmp.name) / "cache.db")
 
     def tearDown(self) -> None:
-        for mod in ("main", "cache", "config"):
+        for mod in ("main", "cache", "config", "providers.tushare_api"):
             sys.modules.pop(mod, None)
         self.tmp.cleanup()
 
     def _import_main(self, *, token: str, secondary: str) -> object:
-        for mod in ("main", "cache", "config"):
+        for mod in ("main", "cache", "config", "providers.tushare_api"):
             sys.modules.pop(mod, None)
         os.environ.pop("STRICT_LIVE_DATA", None)
         return importlib.import_module("main")

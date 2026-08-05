@@ -53,9 +53,9 @@ class _MockResultSet:
 
 class BaostockHistDfTest(unittest.TestCase):
     def test_hk_code_returns_none_without_query(self) -> None:
-        with patch("main._baostock_login") as login, patch("main._baostock_logout") as logout, patch(
-            "main.bs.query_history_k_data_plus"
-        ) as query:
+        with patch("providers.baostock_api._baostock_login") as login, patch(
+            "providers.baostock_api._baostock_logout"
+        ) as logout, patch("providers.baostock_api.bs.query_history_k_data_plus") as query:
             result = main._baostock_hist_df("00700.HK", "20240101", "20240131", "qfq")
         self.assertIsNone(result)
         login.assert_not_called()
@@ -64,9 +64,9 @@ class BaostockHistDfTest(unittest.TestCase):
 
     def test_error_code_nonzero_returns_none_and_logout(self) -> None:
         rs = _MockResultSet(error_code="10001001")
-        with patch("main._baostock_login", return_value=_mock_login_result()), patch(
-            "main._baostock_logout"
-        ) as logout, patch("main.bs.query_history_k_data_plus", return_value=rs) as query:
+        with patch("providers.baostock_api._baostock_login", return_value=_mock_login_result()), patch(
+            "providers.baostock_api._baostock_logout"
+        ) as logout, patch("providers.baostock_api.bs.query_history_k_data_plus", return_value=rs) as query:
             result = main._baostock_hist_df("600519.SH", "20240101", "20240131", "qfq")
         self.assertIsNone(result)
         logout.assert_called_once()
@@ -81,9 +81,9 @@ class BaostockHistDfTest(unittest.TestCase):
 
     def test_empty_data_returns_empty_df_and_logout(self) -> None:
         rs = _MockResultSet(rows=[])
-        with patch("main._baostock_login", return_value=_mock_login_result()), patch(
-            "main._baostock_logout"
-        ) as logout, patch("main.bs.query_history_k_data_plus", return_value=rs):
+        with patch("providers.baostock_api._baostock_login", return_value=_mock_login_result()), patch(
+            "providers.baostock_api._baostock_logout"
+        ) as logout, patch("providers.baostock_api.bs.query_history_k_data_plus", return_value=rs):
             result = main._baostock_hist_df("600519.SH", "20240101", "20240131", "qfq")
         self.assertIsNotNone(result)
         assert result is not None
@@ -96,9 +96,9 @@ class BaostockHistDfTest(unittest.TestCase):
             ["2024-01-03", "sh.600519", "bad", "bad", "bad", "bad", "1000", "0", "0"],
         ]
         rs = _MockResultSet(rows=rows)
-        with patch("main._baostock_login", return_value=_mock_login_result()), patch(
-            "main._baostock_logout"
-        ) as logout, patch("main.bs.query_history_k_data_plus", return_value=rs):
+        with patch("providers.baostock_api._baostock_login", return_value=_mock_login_result()), patch(
+            "providers.baostock_api._baostock_logout"
+        ) as logout, patch("providers.baostock_api.bs.query_history_k_data_plus", return_value=rs):
             result = main._baostock_hist_df("600519.SH", "20240101", "20240131", "qfq")
         self.assertIsNotNone(result)
         assert result is not None
@@ -111,9 +111,9 @@ class BaostockHistDfTest(unittest.TestCase):
             ["2024-01-03", "sh.600519", "1710.0", "1730.0", "1705.0", "1725.0", "120000", "0", "0.9"],
         ]
         rs = _MockResultSet(rows=rows)
-        with patch("main._baostock_login", return_value=_mock_login_result()), patch(
-            "main._baostock_logout"
-        ) as logout, patch("main.bs.query_history_k_data_plus", return_value=rs):
+        with patch("providers.baostock_api._baostock_login", return_value=_mock_login_result()), patch(
+            "providers.baostock_api._baostock_logout"
+        ) as logout, patch("providers.baostock_api.bs.query_history_k_data_plus", return_value=rs):
             result = main._baostock_hist_df("600519.SH", "20240101", "20240131", "hfq")
         self.assertIsNotNone(result)
         assert result is not None
@@ -126,9 +126,9 @@ class BaostockHistDfTest(unittest.TestCase):
 
 class BaostockGrowthYoyTest(unittest.TestCase):
     def test_hk_code_returns_none_without_query(self) -> None:
-        with patch("main.cache_get", return_value=None), patch("main._baostock_login") as login, patch(
-            "main._baostock_logout"
-        ) as logout, patch("main.bs.query_growth_data") as query:
+        with patch("providers.baostock_api.cache_get", return_value=None), patch("providers.baostock_api._baostock_login") as login, patch(
+            "providers.baostock_api._baostock_logout"
+        ) as logout, patch("providers.baostock_api.bs.query_growth_data") as query:
             result = main._baostock_growth_yoy("00700.HK")
         self.assertIsNone(result)
         login.assert_not_called()
@@ -140,11 +140,11 @@ class BaostockGrowthYoyTest(unittest.TestCase):
         rows = [["2024", "4", "0.155"]]
         rs = _MockResultSet(fields=["year", "quarter", "YOYNI"], rows=rows)
         with (
-            patch("main.cache_get", return_value=None),
-            patch("main.cache_put") as cache_put,
-            patch("main._baostock_login", return_value=_mock_login_result()),
-            patch("main._baostock_logout") as logout,
-            patch("main.bs.query_growth_data", return_value=rs),
+            patch("providers.baostock_api.cache_get", return_value=None),
+            patch("providers.baostock_api.cache_put") as cache_put,
+            patch("providers.baostock_api._baostock_login", return_value=_mock_login_result()),
+            patch("providers.baostock_api._baostock_logout") as logout,
+            patch("providers.baostock_api.bs.query_growth_data", return_value=rs),
         ):
             result = main._baostock_growth_yoy("600519.SH")
         self.assertAlmostEqual(result, 15.5)
@@ -154,11 +154,11 @@ class BaostockGrowthYoyTest(unittest.TestCase):
     def test_no_data_returns_none_after_logout(self) -> None:
         rs = _MockResultSet(fields=["year", "quarter", "YOYNI"], rows=[])
         with (
-            patch("main.cache_get", return_value=None),
-            patch("main.cache_put"),
-            patch("main._baostock_login", return_value=_mock_login_result()),
-            patch("main._baostock_logout") as logout,
-            patch("main.bs.query_growth_data", return_value=rs),
+            patch("providers.baostock_api.cache_get", return_value=None),
+            patch("providers.baostock_api.cache_put"),
+            patch("providers.baostock_api._baostock_login", return_value=_mock_login_result()),
+            patch("providers.baostock_api._baostock_logout") as logout,
+            patch("providers.baostock_api.bs.query_growth_data", return_value=rs),
         ):
             result = main._baostock_growth_yoy("600519.SH")
         self.assertIsNone(result)

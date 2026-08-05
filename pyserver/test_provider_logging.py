@@ -11,10 +11,10 @@ class ProviderExceptionLoggingTest(unittest.TestCase):
     def test_ak_stock_value_row_logs_warning_on_failure(self) -> None:
         boom = RuntimeError("upstream timeout")
         with (
-            patch.object(main, "cache_get", return_value=None),
-            patch.object(main, "cache_put"),
-            patch.object(main, "_with_retries", side_effect=boom),
-            patch.object(main.log, "warning") as mock_warning,
+            patch("providers.akshare_analyst.cache_get", return_value=None),
+            patch("providers.akshare_analyst.cache_put"),
+            patch("providers.akshare_analyst._with_retries", side_effect=boom),
+            patch("providers.akshare_analyst.log.warning") as mock_warning,
         ):
             result = main._ak_stock_value_row("600519.SH")
 
