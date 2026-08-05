@@ -73,9 +73,8 @@ services:
       UNIVERSE_REFRESH_LLM_TIMEOUT_MS: ${UNIVERSE_REFRESH_LLM_TIMEOUT_MS:-900000}
       UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS: ${UNIVERSE_REFRESH_VALIDATE_TIMEOUT_MS:-20000}
       # data/ bind-mounted: UI 刷新持久化到宿主机。设为 0 可临时冻结。
-      # Refresh also requires UNIVERSE_REFRESH_TOKEN (app-layer auth).
+      # Access is network-level (127.0.0.1 / SSH tunnel; Mode A: Caddy Basic Auth).
       UNIVERSE_REFRESH_ENABLED: ${UNIVERSE_REFRESH_ENABLED:-1}
-      UNIVERSE_REFRESH_TOKEN: ${UNIVERSE_REFRESH_TOKEN:-}
       PYSERVER_URL: http://pyserver:8001
     depends_on:
       pyserver:

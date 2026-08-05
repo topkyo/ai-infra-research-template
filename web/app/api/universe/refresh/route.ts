@@ -1,14 +1,14 @@
-import { NextRequest } from "next/server";
 import { readUniverse } from "@/lib/universe";
 import { proposeRefresh, applyRefresh } from "@/lib/universe-refresh";
-import { refreshAuthError } from "@/lib/universe-refresh-auth";
 
 export const runtime = "nodejs";
 // proposeRefresh is one full-universe LLM call (same order of magnitude as /api/signals).
 export const maxDuration = 900;
 
 // NDJSON: progress / log / result / error
-export async function POST(req: NextRequest) {
+// Access control is network-level (Mode B: SSH tunnel / 127.0.0.1 only; Mode A: Caddy Basic Auth).
+// No app-layer refresh token — see UNIVERSE_REFRESH_ENABLED for a read-only kill switch.
+export async function POST() {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -25,12 +25,6 @@ export async function POST(req: NextRequest) {
             type: "error",
             message: "当前部署为只读股票池：请在本地运行 cd web && npx tsx scripts/refresh-universe.ts，审查 diff 后提交部署",
           });
-          controller.close();
-          return;
-        }
-        const authError = refreshAuthError(req);
-        if (authError) {
-          send({ type: "error", message: authError });
           controller.close();
           return;
         }

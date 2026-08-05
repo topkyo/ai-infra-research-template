@@ -3,7 +3,8 @@
 # pyserver (127.0.0.1:8001) is NOT exposed; web talks to it inside Docker.
 
 app.example.com {
-	# Optional Basic Auth — generate hash: caddy hash-password
+	# Required for Mode A (public HTTPS): generate hash with `caddy hash-password`.
+	# Universe refresh has no app-layer token — this is the gate.
 	# basicauth {
 	# 	admin JDJhJDE0$REPLACE_WITH_caddy_hash-password_OUTPUT
 	# }

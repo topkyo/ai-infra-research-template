@@ -75,10 +75,9 @@ ssh -L 3000:127.0.0.1:3000 goyun
 
 - [ ] 安装 Caddy（见 [deploy/README.md](../deploy/README.md)）。
 - [ ] `sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile`，替换域名。
-- [ ] 可选：启用 **Basic Auth**（`caddy hash-password` + 取消注释 `basicauth` 块）。
-- [ ] `.env` 已设置强随机 `UNIVERSE_REFRESH_TOKEN`（股票池 UI 刷新必填；与首页令牌输入一致）。
+- [ ] **必须**启用 **Basic Auth**（`caddy hash-password` + 取消注释 `basicauth` 块）——股票池刷新无应用层令牌，公网入口靠 Caddy。
 - [ ] `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`
-- [ ] 浏览器访问 `https://<私有域名>`，确认研究台可加载；若启用 Basic Auth，未认证应被拒绝。
+- [ ] 浏览器访问 `https://<私有域名>`，确认研究台可加载；未认证应被拒绝。
 - [ ] 再次确认 Caddy **仅** `reverse_proxy 127.0.0.1:3000`，**不含** `:8001` 反代。
 
 ## F. Vercel 公开面

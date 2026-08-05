@@ -56,7 +56,6 @@ export default function Home() {
         </div>
         <RefreshUniverseButton
           disabled={process.env.UNIVERSE_REFRESH_ENABLED === "0"}
-          tokenConfigured={Boolean(process.env.UNIVERSE_REFRESH_TOKEN?.trim())}
         />
       </div>
 

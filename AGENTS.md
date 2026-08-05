@@ -42,7 +42,7 @@ Copy `pyserver/env.example` to `pyserver/.env`; leave `TUSHARE_TOKEN` empty for 
 
 - **Live signals** (`web/app/api/signals/route.ts`): portfolio-aware target weights, `mode=real|paper`; real mode requires valid `web/data/holdings.local.json` and returns `setup_required` before market/LLM calls when missing or invalid. Serial batched LLM via `SIGNALS_LLM_SCORE_BATCH_SIZE` (default 10), `LLM_MODEL` (default `deepseek-v4-flash`), `SIGNALS_LLM_TIMEOUT_MS` (900000 per batch), route `maxDuration = 3600`.
 - **Backtest** (`web/app/api/backtest/route.ts`): per rebalance day, batched LLM inside each day, `BACKTEST_SIGNAL_CONCURRENCY` parallel days, `LLM_MODEL_BACKTEST` (default `deepseek-v4-flash`), route `maxDuration = 3600`.
-- **Universe refresh** (`web/app/api/universe/refresh/route.ts`): one LLM `proposeRefresh` call, `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` (900000), route `maxDuration = 900`. Requires `UNIVERSE_REFRESH_TOKEN` (`x-universe-refresh-token` or Bearer); compose mounts `./web/data` for atomic writes.
+- **Universe refresh** (`web/app/api/universe/refresh/route.ts`): one LLM `proposeRefresh` call, `UNIVERSE_REFRESH_LLM_TIMEOUT_MS` (900000), route `maxDuration = 900`. No app-layer refresh token (access via SSH tunnel or Caddy Basic Auth); `UNIVERSE_REFRESH_ENABLED=0` freezes writes. Compose mounts `./web/data` for atomic writes.
 - Strict mode: no synthetic hold or synthetic target weights on LLM failure; see README “LLM 工作流”.
 
 ## 严肃看盘数据完整性规则

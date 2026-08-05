@@ -68,8 +68,7 @@ BACKTEST_SIGNAL_CONCURRENCY=8
 BACKTEST_LLM_SCORE_BATCH_SIZE=10
 BACKTEST_LLM_TIMEOUT_MS=300000
 UNIVERSE_REFRESH_LLM_TIMEOUT_MS=900000
-# 必填：openssl rand -hex 24   （勿使用占位字符串）
-UNIVERSE_REFRESH_TOKEN=
+UNIVERSE_REFRESH_ENABLED=1
 ```
 
 当前 `docker-compose.yml` 只把 `TUSHARE_TOKEN` 和 `PYSERVER_CACHE_DB` 传给 pyserver。若要在 Docker 中启用 Tushare 次级源，先在 `docker-compose.yml` 的 `pyserver.environment` 增加 `MARKET_ENABLE_TUSHARE_SECONDARY` 和 `STRICT_LIVE_DATA`，再配置：
@@ -146,7 +145,7 @@ cp web/data/holdings.example.json private/holdings.local.json
 
 详见 [private/README.md](../private/README.md)。
 
-股票池 UI 刷新另需在 `.env` 设置强随机 `UNIVERSE_REFRESH_TOKEN`（≥16 位，与首页令牌一致）；未设置或仍为占位值时接口拒绝。
+股票池 UI 刷新默认启用（`UNIVERSE_REFRESH_ENABLED=1`）；演示/只读可设 `0`。访问靠 SSH 隧道或 Caddy Basic Auth，无应用层刷新令牌。
 
 启动：
 
