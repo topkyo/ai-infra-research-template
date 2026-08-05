@@ -1,19 +1,16 @@
 import { resolveLlmConfig } from "./config";
 import { mockPortfolioTargetFor, mockProviderActive } from "./mock";
 import { PORTFOLIO_STRATEGY_SYSTEM } from "./prompts";
+import { chatWithScoreRetry } from "./score-retry";
 import {
   chunks,
   DEFAULT_SCORE_BATCH_SIZE,
   envPositiveInt,
   envPositiveNumber,
-  isStrictLlmOutputError,
   MIN_SCORABLE_KLINES,
   normalizePortfolioSignals,
   signalSource,
-  sleep,
-  strictOutputRepairMessages,
 } from "./strict";
-import { chatDetailed } from "./transport";
 import type { ChatMessage, PortfolioScoringSnapshot, PortfolioTargetSignal } from "./types";
 import { buildRuleFeatures } from "../scoring/rules";
 
@@ -65,42 +62,11 @@ async function scorePortfolioTargetsBatchLlm(
   ];
   const cfg = resolveLlmConfig();
   const timeoutMs = envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 900_000);
-  let lastError: unknown;
   const configuredAttempts = envPositiveInt("SIGNALS_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1));
-  const attempts = opts.bypassCache ? 1 : configuredAttempts;
-  let strictRetryUsed = false;
-  let attemptMessages = messages;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const result = await chatDetailed(attemptMessages, {
-        model: cfg.model,
-        responseFormat: "json_object",
-        temperature: attempt === 0 ? 0.2 : 0,
-        bypassCache: opts.bypassCache || attempt > 0 || attemptMessages !== messages,
-        timeoutMs,
-      });
-      if (!result.content.trim()) {
-        throw new Error("LLM returned empty content");
-      }
-      return normalizePortfolioSignals(result.content, snapshots, signalSource(result.cacheHit));
-    } catch (e) {
-      lastError = e;
-      const canUseConfiguredRetry = attempt < attempts - 1;
-      const canUseStrictRetry = !opts.bypassCache && !strictRetryUsed && isStrictLlmOutputError(e);
-      if (canUseStrictRetry && !canUseConfiguredRetry) {
-        strictRetryUsed = true;
-      }
-      if (canUseConfiguredRetry || canUseStrictRetry) {
-        if (isStrictLlmOutputError(e)) {
-          attemptMessages = strictOutputRepairMessages(messages, e);
-        }
-        await sleep(500 * (attempt + 1));
-        continue;
-      }
-      break;
-    }
-  }
-  throw lastError;
+  return chatWithScoreRetry(
+    { messages, model: cfg.model, timeoutMs, configuredAttempts, bypassCache: opts.bypassCache },
+    (content, cacheHit) => normalizePortfolioSignals(content, snapshots, signalSource(cacheHit)),
+  );
 }
 
 export async function scorePortfolioTargets(

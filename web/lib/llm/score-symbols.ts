@@ -1,19 +1,16 @@
 import { resolveLlmConfig } from "./config";
 import { mockProviderActive, mockSignalFor } from "./mock";
 import { STRATEGY_SYSTEM, STRATEGY_SYSTEM_BACKTEST } from "./prompts";
+import { chatWithScoreRetry } from "./score-retry";
 import {
   chunks,
   DEFAULT_SCORE_BATCH_SIZE,
   envPositiveInt,
   envPositiveNumber,
-  isStrictLlmOutputError,
   MIN_SCORABLE_KLINES,
   normalizeLlmSignals,
   signalSource,
-  sleep,
-  strictOutputRepairMessages,
 } from "./strict";
-import { chatDetailed } from "./transport";
 import type { ChatMessage, Signal, SymbolSnapshot } from "./types";
 import { buildRuleFeatures } from "../scoring/rules";
 
@@ -100,44 +97,13 @@ async function scoreSymbolsBatchLlm(
   const timeoutMs = opts.mode === "backtest"
     ? envPositiveNumber("BACKTEST_LLM_TIMEOUT_MS", 300_000)
     : envPositiveNumber("SIGNALS_LLM_TIMEOUT_MS", 900_000);
-  let lastError: unknown;
   const configuredAttempts = opts.mode === "backtest"
     ? envPositiveInt("BACKTEST_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1))
     : envPositiveInt("SIGNALS_LLM_MAX_ATTEMPTS", envPositiveInt("LLM_MAX_ATTEMPTS", 1));
-  const attempts = opts.bypassCache ? 1 : configuredAttempts;
-  let strictRetryUsed = false;
-  let attemptMessages = messages;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const result = await chatDetailed(attemptMessages, {
-        model,
-        responseFormat: "json_object",
-        temperature: attempt === 0 ? 0.2 : 0,
-        bypassCache: opts.bypassCache || attempt > 0 || attemptMessages !== messages,
-        timeoutMs,
-      });
-      if (!result.content.trim()) {
-        throw new Error("LLM returned empty content");
-      }
-      return normalizeLlmSignals(result.content, snapshots, signalSource(result.cacheHit));
-    } catch (e) {
-      lastError = e;
-      const canUseConfiguredRetry = attempt < attempts - 1;
-      const canUseStrictRetry = !opts.bypassCache && !strictRetryUsed && isStrictLlmOutputError(e);
-      if (canUseStrictRetry && !canUseConfiguredRetry) {
-        strictRetryUsed = true;
-      }
-      if (canUseConfiguredRetry || canUseStrictRetry) {
-        if (isStrictLlmOutputError(e)) {
-          attemptMessages = strictOutputRepairMessages(messages, e);
-        }
-        await sleep(500 * (attempt + 1));
-        continue;
-      }
-      break;
-    }
-  }
-  throw lastError;
+  return chatWithScoreRetry(
+    { messages, model, timeoutMs, configuredAttempts, bypassCache: opts.bypassCache },
+    (content, cacheHit) => normalizeLlmSignals(content, snapshots, signalSource(cacheHit)),
+  );
 }
 
 export async function scoreSymbols(
