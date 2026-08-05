@@ -100,6 +100,19 @@ else
     echo "[vps-snapshot] error: set VERCEL_TOKEN or create $VERCEL_TOKEN_FILE" >&2
     exit 1
   fi
+  # Pin the existing public project — bare `vercel deploy` may create a new
+  # "docs" project when docs/.vercel/project.json is missing on the VPS.
+  mkdir -p docs/.vercel
+  if [[ ! -f docs/.vercel/project.json ]]; then
+    if [[ -n "${VERCEL_ORG_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
+      printf '%s\n' "{\"projectId\":\"${VERCEL_PROJECT_ID}\",\"orgId\":\"${VERCEL_ORG_ID}\"}" \
+        > docs/.vercel/project.json
+    else
+      # Known Combo A public project (ai-infra-dashboard-docs).
+      printf '%s\n' '{"projectId":"prj_pHPcGwsPUjpEnBQLmdbiBD45VojP","orgId":"team_vZF69jAbikZqLi7whDRvrSx3","projectName":"ai-infra-dashboard-docs"}' \
+        > docs/.vercel/project.json
+    fi
+  fi
   echo "[vps-snapshot] deploying docs/ to Vercel production…"
   ./scripts/deploy-public-snapshot.sh
   echo "[vps-snapshot] public URL: https://ai-infra-dashboard-docs.vercel.app"
