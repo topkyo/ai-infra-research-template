@@ -10,6 +10,7 @@ from unittest.mock import patch
 import cache as cache_mod
 import main
 import pandas as pd
+import analyst as analyst_mod
 from analyst import analyst
 
 
@@ -83,12 +84,12 @@ class EndpointCacheHitTest(unittest.TestCase):
             main._QUOTE_SOURCE_KEY: "akshare_eastmoney",
         }
         research = {"buy_count": 3, "total_count": 5, "consensus_eps_next": 1.0}
-        with patch.object(main, "MOCK_MODE", False), patch.object(
-            main, "_ak_a_spot", side_effect=[ak_spot, AssertionError("upstream called twice")],
-        ) as mock_spot, patch.object(main, "_ak_stock_value_row", return_value=None), patch.object(
-            main, "_ak_a_spot_from_hist", return_value=None,
-        ), patch.object(main, "_ak_research_consensus", return_value=research), patch.object(
-            main, "_ak_consensus_eps", return_value=(1.0, 5),
+        with patch.object(analyst_mod, "MOCK_MODE", False), patch.object(
+            analyst_mod, "_ak_a_spot", side_effect=[ak_spot, AssertionError("upstream called twice")],
+        ) as mock_spot, patch.object(analyst_mod, "_ak_stock_value_row", return_value=None), patch.object(
+            analyst_mod, "_ak_a_spot_from_hist", return_value=None,
+        ), patch.object(analyst_mod, "_ak_research_consensus", return_value=research), patch.object(
+            analyst_mod, "_ak_consensus_eps", return_value=(1.0, 5),
         ):
             analyst("600519")
             analyst("600519")

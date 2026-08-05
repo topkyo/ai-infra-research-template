@@ -1,7 +1,4 @@
-"""Analyst consensus endpoint — extracted from main.py for maintainability.
-
-Uses late imports for main.py helpers to avoid circular imports.
-"""
+"""Analyst consensus endpoint — extracted from main.py for maintainability."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -11,7 +8,22 @@ import pandas as pd
 from fastapi import HTTPException, Query
 
 from cache import cache_get, cache_put
+from config import MARKET_ENABLE_TUSHARE_SECONDARY, MOCK_MODE, _QUOTE_SOURCE_KEY, log
+from http_util import _with_retries
+from providers import tushare_api
+from providers.akshare_analyst import (
+    _ak_consensus_eps,
+    _ak_research_consensus,
+    _ak_stock_value_row,
+)
+from providers.akshare_spot import _ak_a_spot, _ak_a_spot_from_hist, _spot_price_from_ak
+from providers.tushare_api import _daily_basic, _report_rc
+from symbols import _echo_request_symbol, _to_ts_code
+from util import _ak_col, _num_or_none, _source_summary
 from validation import _validate_symbol
+
+if MOCK_MODE:
+    from mock_data import mock_analyst
 
 _ANALYSTS_MAX_SYMBOLS = 50
 
@@ -22,31 +34,6 @@ def analyst(symbol: str):
     Aggregates EPS forecasts for next fiscal year across recent analyst
     reports; implied target = consensus EPS * current PE(TTM).
     """
-    # Late import: main.py imports this module, so we can't import main at
-    # module level. These are resolved at call time, which is after main.py
-    # has finished loading.
-    from main import (
-        MOCK_MODE,
-        MARKET_ENABLE_TUSHARE_SECONDARY,
-        _QUOTE_SOURCE_KEY,
-        _ak_a_spot,
-        _ak_a_spot_from_hist,
-        _ak_col,
-        _ak_consensus_eps,
-        _ak_research_consensus,
-        _ak_stock_value_row,
-        _daily_basic,
-        _echo_request_symbol,
-        _num_or_none,
-        _pro,
-        _report_rc,
-        _source_summary,
-        _spot_price_from_ak,
-        _to_ts_code,
-        _with_retries,
-        log,
-    )
-
     symbol = _validate_symbol(symbol)
     ts_code, market = _to_ts_code(symbol)
     key = f"analyst:v4:{ts_code}"
@@ -55,10 +42,6 @@ def analyst(symbol: str):
         return _echo_request_symbol(cached, symbol)
 
     if MOCK_MODE:
-        # mock_analyst is only present in main's namespace when MOCK_MODE is
-        # set, so import it lazily here rather than in the top-level late import.
-        from main import mock_analyst
-
         out = mock_analyst(symbol)
         out["source"] = "mock"
         out["fetched_at"] = datetime.now().isoformat()
@@ -105,6 +88,7 @@ def analyst(symbol: str):
             out["current_price"] = round(float(hist_spot["price"]), 3)
             out["field_sources"]["current_price"] = "akshare_daily_close"
             out["warnings"].append("current_price is latest daily close from AkShare daily history, not realtime")
+    _pro = tushare_api._pro
     if MARKET_ENABLE_TUSHARE_SECONDARY and _pro is not None and (out.get("current_price") is None or pe_ttm is None):
         try:
             today = date.today().strftime("%Y%m%d")
@@ -241,9 +225,6 @@ def analyst(symbol: str):
 
 
 def analysts(symbols: str = Query(..., description="comma-separated symbols")):
-    # Late import for main.py helpers used in the error-reporting path.
-    from main import MARKET_ENABLE_TUSHARE_SECONDARY, log
-
     uniq = [s.strip() for s in symbols.split(",") if s.strip()]
     if len(uniq) > _ANALYSTS_MAX_SYMBOLS:
         raise HTTPException(400, f"symbols 最多 {_ANALYSTS_MAX_SYMBOLS} 个")
