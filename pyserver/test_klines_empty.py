@@ -23,7 +23,7 @@ class EmptyBarsTtlTest(unittest.TestCase):
 
 class AkAHistDfEmptyTest(unittest.TestCase):
     def test_both_paths_empty_returns_empty_df_not_none(self) -> None:
-        with patch("main._with_retries", side_effect=[pd.DataFrame(), pd.DataFrame()]):
+        with patch("providers.akshare_hist._with_retries", side_effect=[pd.DataFrame(), pd.DataFrame()]):
             result = main._ak_a_hist_df("600519", "20230101", "20240101")
         self.assertIsNotNone(result)
         assert result is not None
@@ -31,20 +31,20 @@ class AkAHistDfEmptyTest(unittest.TestCase):
 
     def test_first_nonempty_skips_second(self) -> None:
         first = pd.DataFrame({"date": ["2024-01-02"], "open": [1.0]})
-        with patch("main._with_retries", return_value=first) as mock_retries:
+        with patch("providers.akshare_hist._with_retries", return_value=first) as mock_retries:
             result = main._ak_a_hist_df("600519", "20230101", "20240101")
         self.assertIs(result, first)
         mock_retries.assert_called_once()
 
     def test_first_empty_second_none_returns_empty_df(self) -> None:
-        with patch("main._with_retries", side_effect=[pd.DataFrame(), None]):
+        with patch("providers.akshare_hist._with_retries", side_effect=[pd.DataFrame(), None]):
             result = main._ak_a_hist_df("600519", "20230101", "20240101")
         self.assertIsNotNone(result)
         assert result is not None
         self.assertTrue(result.empty)
 
     def test_both_fail_returns_none(self) -> None:
-        with patch("main._with_retries", side_effect=Exception("upstream")):
+        with patch("providers.akshare_hist._with_retries", side_effect=Exception("upstream")):
             result = main._ak_a_hist_df("600519", "20230101", "20240101")
         self.assertIsNone(result)
 

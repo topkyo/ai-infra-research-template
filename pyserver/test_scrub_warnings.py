@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import re
+import sys
 import unittest
 from unittest.mock import patch
 
-import main
 import analyst as analyst_mod
 from analyst import analyst
 
@@ -14,6 +14,15 @@ _URL_OR_PATH = re.compile(
     r"https?://|/Users/|/var/|/tmp/|\.eastmoney\.|push2\.|sinajs\.cn",
     re.IGNORECASE,
 )
+
+
+def _main():
+    """Return the live main module (bootstrap tests may pop/reimport it)."""
+    import importlib
+
+    if "main" not in sys.modules:
+        return importlib.import_module("main")
+    return sys.modules["main"]
 
 
 def _warnings_contain_url_or_path(warnings: list[str]) -> str | None:
@@ -37,11 +46,12 @@ class ScrubWarningsTest(unittest.TestCase):
             "GET https://api.tushare.pro/data failed /Users/ht/.env secret-token"
         )
         out: dict = {"warnings": []}
+        main = _main()
         with (
-            patch.object(main, "_baostock_growth_yoy", return_value=None),
-            patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
-            patch.object(main, "_latest_profit_yoy", side_effect=secret_err),
-            patch.object(main.log, "exception"),
+            patch("providers.baostock_api._baostock_growth_yoy", return_value=None),
+            patch("providers.tushare_api.MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch("providers.tushare_api._latest_profit_yoy", side_effect=secret_err),
+            patch("providers.tushare_api.log.exception"),
         ):
             main._attach_profit_yoy(out, "600519.SH", "sh")
 
@@ -54,6 +64,7 @@ class ScrubWarningsTest(unittest.TestCase):
 
     def test_analyst_daily_basic_warning_scrubs_exception_body(self) -> None:
         secret_err = OSError("/tmp/leaked-path https://hq.sinajs.cn/list=sh600519")
+        main = _main()
         with (
             patch.object(analyst_mod, "cache_get", return_value=None),
             patch.object(analyst_mod, "cache_put"),
@@ -63,7 +74,9 @@ class ScrubWarningsTest(unittest.TestCase):
             patch.object(main, "_ak_research_consensus", return_value={}),
             patch.object(main, "_ak_consensus_eps", return_value=(None, None)),
             patch.object(main, "_pro", object()),
+            patch("providers.tushare_api._pro", object()),
             patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch("providers.tushare_api.MARKET_ENABLE_TUSHARE_SECONDARY", True),
             patch.object(main, "_with_retries", side_effect=secret_err),
             patch.object(main.log, "exception"),
         ):
@@ -83,6 +96,7 @@ class ScrubWarningsTest(unittest.TestCase):
         secret_err = RuntimeError(
             "report_rc https://api.tushare.pro secret-token /Users/ht/.env"
         )
+        main = _main()
         with (
             patch.object(analyst_mod, "cache_get", return_value=None),
             patch.object(analyst_mod, "cache_put"),
@@ -92,7 +106,9 @@ class ScrubWarningsTest(unittest.TestCase):
             patch.object(main, "_ak_research_consensus", return_value={}),
             patch.object(main, "_ak_consensus_eps", return_value=(None, None)),
             patch.object(main, "_pro", object()),
+            patch("providers.tushare_api._pro", object()),
             patch.object(main, "MARKET_ENABLE_TUSHARE_SECONDARY", True),
+            patch("providers.tushare_api.MARKET_ENABLE_TUSHARE_SECONDARY", True),
             patch.object(main, "_with_retries", side_effect=secret_err),
             patch.object(main.log, "exception"),
         ):

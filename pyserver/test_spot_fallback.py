@@ -92,8 +92,8 @@ class AkASpotFallbackTest(unittest.TestCase):
             "成交额": 0,
             _QUOTE_SOURCE_KEY: "sina_hq_sinajs",
         }
-        with patch("main._ak_a_spot_rows", return_value=None), patch(
-            "main._sina_a_spot_rows",
+        with patch("providers.akshare_spot._ak_a_spot_rows", return_value=None), patch(
+            "providers.akshare_spot._sina_a_spot_rows",
             return_value=sina_row,
         ):
             row = _ak_a_spot("688256.SH", "sh")
@@ -112,7 +112,7 @@ class SpotNegativeCacheTest(unittest.TestCase):
         cache_mod._init_db()
 
     def test_eastmoney_failure_writes_negative_cache_and_skips_second_http(self) -> None:
-        with patch("main._market_http_get", side_effect=RuntimeError("network down")) as mock_get:
+        with patch("providers.akshare_spot._market_http_get", side_effect=RuntimeError("network down")) as mock_get:
             first = main._ak_a_spot_rows("688256.SH", "sh")
             second = main._ak_a_spot_rows("688256.SH", "sh")
         self.assertIsNone(first)
@@ -122,8 +122,8 @@ class SpotNegativeCacheTest(unittest.TestCase):
     def test_negative_cache_does_not_fabricate_success_on_spot_endpoint(self) -> None:
         with (
             patch("main.MOCK_MODE", False),
-            patch("main._ak_a_spot_rows", return_value=None),
-            patch("main._sina_a_spot_rows", return_value=None),
+            patch("providers.akshare_spot._ak_a_spot_rows", return_value=None),
+            patch("providers.akshare_spot._sina_a_spot_rows", return_value=None),
             patch("main._ak_stock_value_row", return_value=None),
             patch("main._ak_a_spot_from_hist", return_value=None),
             patch("main._pro", None),
