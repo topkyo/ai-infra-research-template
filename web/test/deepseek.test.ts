@@ -470,6 +470,56 @@ test("isRetryableTransportError retries HTTP 5xx and fetch network failures only
   assert.equal(retryDelayMs(0, "120"), 60_000);
 });
 
+test("scoreSymbols backtest mode sends price-theme-only payload without fundamentals", async () => {
+  const { scoreSymbols } = await import("../lib/deepseek");
+  const input = [snapshot("A")];
+  let systemContent = "";
+  const { userMessages } = await withMockedLlm(
+    (symbols, _call, messages) => {
+      systemContent = messages.find((m) => m.role === "system")?.content ?? "";
+      return {
+        signals: symbols.map((symbol) => ({
+          symbol,
+          action: "hold",
+          confidence: 0.5,
+          size: 0,
+          rationale: "ok",
+        })),
+      };
+    },
+    () => scoreSymbols(input, { bypassCache: true, mode: "backtest" }),
+  );
+  assert.match(systemContent, /closes_tail30/);
+  assert.match(systemContent, /momentum_score.*theme_score|theme_score.*momentum_score/);
+  assert.match(systemContent, /禁止 look-ahead|look-ahead/);
+  assert.match(systemContent, /出货\/订单|订单\/出货/);
+  assert.doesNotMatch(systemContent, /订单\/出货传导|市值位置/);
+  assert.doesNotMatch(systemContent, /40\/30\/30/);
+  assert.doesNotMatch(systemContent, /基本面估值约 40%|基本面估值 40%|基本面.*40%/);
+  assert.match(systemContent, /PE\/PB\/PEG/);
+  assert.doesNotMatch(systemContent, /PEG=pe_ttm/);
+  assert.doesNotMatch(systemContent, /PEG 偏低/);
+  const payload = JSON.parse(userMessages[0]) as {
+    scoring_rule: string;
+    symbols: Array<Record<string, unknown> & { features?: Record<string, unknown> }>;
+  };
+  assert.match(payload.scoring_rule, /主题景气.*价格动量/);
+  assert.doesNotMatch(payload.scoring_rule, /40\/30\/30/);
+  assert.doesNotMatch(payload.scoring_rule, /基本面.*40%|40%.*基本面/);
+  assert.doesNotMatch(payload.scoring_rule, /PEG=pe_ttm/);
+  const sym = payload.symbols[0];
+  assert.equal(sym.symbol, "A");
+  assert.ok(!("pe_ttm" in sym));
+  assert.ok(!("pb" in sym));
+  assert.ok(!("profit_yoy_pct" in sym));
+  assert.ok(!("market_cap_yi" in sym));
+  const features = sym.features ?? {};
+  assert.ok(!("peg" in features));
+  assert.ok(!("peg_score" in features));
+  assert.ok("momentum_score" in features);
+  assert.ok("theme_score" in features);
+});
+
 test("scoreSymbols uses a shorter timeout for backtest mode", async () => {
   const { scoreSymbols } = await import("../lib/deepseek");
   const originalFetch = globalThis.fetch;

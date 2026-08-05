@@ -1,6 +1,6 @@
 import { resolveLlmConfig } from "./config";
 import { mockProviderActive, mockSignalFor } from "./mock";
-import { STRATEGY_SYSTEM } from "./prompts";
+import { STRATEGY_SYSTEM, STRATEGY_SYSTEM_BACKTEST } from "./prompts";
 import {
   chunks,
   DEFAULT_SCORE_BATCH_SIZE,
@@ -17,6 +17,58 @@ import { chatDetailed } from "./transport";
 import type { ChatMessage, Signal, SymbolSnapshot } from "./types";
 import { buildRuleFeatures } from "../scoring/rules";
 
+const LIVE_SCORING_RULE =
+  "40/30/30 三维平衡：基本面(PEG=pe_ttm/profit_yoy_pct,越低越优)40%、主题景气30%、价格动量30%。任一维度强势可作买入触发。";
+const BACKTEST_SCORING_RULE =
+  "50/50 二维平衡：主题景气50%、价格动量50%。回测不含基本面/PEG（无 point-in-time 历史基本面，避免 look-ahead）。";
+
+const BACKTEST_OMIT_MISSING_FLAGS = new Set([
+  "missing_fundamental",
+  "missing_pe_ttm",
+  "missing_profit_yoy",
+  "missing_pb",
+  "missing_market_cap",
+  "missing_peg",
+]);
+
+function buildLiveSymbolPayload(s: SymbolSnapshot) {
+  const f = buildRuleFeatures(s);
+  return {
+    symbol: s.symbol,
+    name: s.name ?? undefined,
+    theme: s.theme,
+    closes_tail30: s.closes.slice(-30).map((x) => Number(x.toFixed(3))),
+    pe_ttm: s.fundamental?.pe_ttm ?? null,
+    pb: s.fundamental?.pb ?? null,
+    market_cap_yi: s.fundamental?.market_cap ?? null,
+    profit_yoy_pct: s.fundamental?.profit_yoy ?? null,
+    features: {
+      peg: f.peg,
+      peg_score: Number(f.pegScore.toFixed(3)),
+      momentum_20d_pct: f.momentum20dPct,
+      momentum_score: Number(f.momentumScore.toFixed(3)),
+      theme_score: Number(f.themeScore.toFixed(3)),
+      data_missing_flags: f.dataMissingFlags,
+    },
+  };
+}
+
+function buildBacktestSymbolPayload(s: SymbolSnapshot) {
+  const f = buildRuleFeatures(s);
+  return {
+    symbol: s.symbol,
+    name: s.name ?? undefined,
+    theme: s.theme,
+    closes_tail30: s.closes.slice(-30).map((x) => Number(x.toFixed(3))),
+    features: {
+      momentum_20d_pct: f.momentum20dPct,
+      momentum_score: Number(f.momentumScore.toFixed(3)),
+      theme_score: Number(f.themeScore.toFixed(3)),
+      data_missing_flags: f.dataMissingFlags.filter((flag) => !BACKTEST_OMIT_MISSING_FLAGS.has(flag)),
+    },
+  };
+}
+
 async function scoreSymbolsBatchLlm(
   snapshots: SymbolSnapshot[],
   opts: {
@@ -26,35 +78,22 @@ async function scoreSymbolsBatchLlm(
   } = {},
 ): Promise<Signal[]> {
   if (snapshots.length === 0) return [];
-  const userPayload = {
-    as_of: opts.asOf ?? new Date().toISOString().slice(0, 10),
-    scoring_rule: "40/30/30 三维平衡：基本面(PEG=pe_ttm/profit_yoy_pct,越低越优)40%、主题景气30%、价格动量30%。任一维度强势可作买入触发。",
-    symbols: snapshots.map((s) => ({
-      symbol: s.symbol,
-      name: s.name ?? undefined,
-      theme: s.theme,
-      // truncate to last 30 closes to keep prompt small while preserving trend
-      closes_tail30: s.closes.slice(-30).map((x) => Number(x.toFixed(3))),
-      pe_ttm: s.fundamental?.pe_ttm ?? null,
-      pb: s.fundamental?.pb ?? null,
-      market_cap_yi: s.fundamental?.market_cap ?? null,
-      profit_yoy_pct: s.fundamental?.profit_yoy ?? null,
-      features: (() => {
-        const f = buildRuleFeatures(s);
-        return {
-          peg: f.peg,
-          peg_score: Number(f.pegScore.toFixed(3)),
-          momentum_20d_pct: f.momentum20dPct,
-          momentum_score: Number(f.momentumScore.toFixed(3)),
-          theme_score: Number(f.themeScore.toFixed(3)),
-          data_missing_flags: f.dataMissingFlags,
-        };
-      })(),
-    })),
-  };
+  const asOf = opts.asOf ?? new Date().toISOString().slice(0, 10);
+  const isBacktest = opts.mode === "backtest";
+  const userPayload = isBacktest
+    ? {
+        as_of: asOf,
+        scoring_rule: BACKTEST_SCORING_RULE,
+        symbols: snapshots.map(buildBacktestSymbolPayload),
+      }
+    : {
+        as_of: asOf,
+        scoring_rule: LIVE_SCORING_RULE,
+        symbols: snapshots.map(buildLiveSymbolPayload),
+      };
 
   const messages: ChatMessage[] = [
-    { role: "system" as const, content: STRATEGY_SYSTEM },
+    { role: "system" as const, content: isBacktest ? STRATEGY_SYSTEM_BACKTEST : STRATEGY_SYSTEM },
     { role: "user" as const, content: JSON.stringify(userPayload) },
   ];
   const model = opts.mode === "backtest" ? resolveLlmConfig().backtestModel : resolveLlmConfig().model;

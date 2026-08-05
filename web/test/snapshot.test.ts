@@ -52,10 +52,10 @@ test("snapshot signal loader keeps fundamental failures as warnings", () => {
 });
 
 test("snapshot backtest loader fails hard on missing or insufficient klines", () => {
-  const failed = loadBacktestSeries(entry, rejected("pyserver down"), fulfilled({ symbol: "000001" }));
+  const failed = loadBacktestSeries(entry, rejected("pyserver down"));
   assert.match(failed.error ?? "", /000001.*pyserver down/);
 
-  const short = loadBacktestSeries(entry, fulfilled(klines(19)), fulfilled({ symbol: "000001" }));
+  const short = loadBacktestSeries(entry, fulfilled(klines(19)));
   assert.match(short.error ?? "", /000001.*only 19 bars/);
 
   assert.throws(

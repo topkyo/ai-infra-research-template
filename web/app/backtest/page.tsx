@@ -12,6 +12,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { BacktestResult } from "@/lib/backtest";
+import { BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING } from "@/lib/backtest-warnings";
 import { readNdjsonStream } from "@/lib/ndjson";
 
 type Phase = "loading" | "signals" | "simulating";
@@ -23,7 +24,7 @@ interface Progress {
 }
 
 const PHASE_LABEL: Record<Phase, string> = {
-  loading: "加载行情与基本面",
+  loading: "加载行情",
   signals: "DeepSeek 信号生成",
   simulating: "回测撮合",
 };
@@ -125,6 +126,7 @@ export default function BacktestPage() {
   }
 
   const pct = overallPct(progress);
+  const dataWarnings = result?.warnings?.filter((w) => w !== BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING) ?? [];
 
   return (
     <div className="container">
@@ -133,7 +135,7 @@ export default function BacktestPage() {
         <div>
           <div className="eyebrow">{SITE_EYEBROW}</div>
           <h1>策略回测</h1>
-          <p>按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，涨停不可买、跌停不可卖（可关闭），与基准指数对比。信号与成交均基于当日收盘价。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。</p>
+          <p>按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，涨停不可买、跌停不可卖（可关闭），与基准指数对比。信号与成交均基于当日收盘价。LLM 打分仅使用截至调仓日的价格动量与主题标签（不含静态基本面，避免 look-ahead）。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。</p>
         </div>
       </header>
 
@@ -221,13 +223,19 @@ export default function BacktestPage() {
         </div>
       )}
 
-      {result && result.warnings && result.warnings.length > 0 && (
+      {result && (
         <div className="card spaced-top card-warn">
-          <strong>数据警告（{result.warnings.length}）：</strong>
+          <strong>回测说明：</strong> {BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING}
+        </div>
+      )}
+
+      {result && dataWarnings.length > 0 && (
+        <div className="card spaced-top card-warn">
+          <strong>数据警告（{dataWarnings.length}）：</strong>
           调仓日存在缺行情（停牌/缺数据）标的，已跳过其交易并按最近收盘价估值。
           <details className="progress-logs-more">
             <summary>查看明细</summary>
-            {result.warnings.slice(0, 20).map((w, i) => <div key={i}>· {w}</div>)}
+            {dataWarnings.slice(0, 20).map((w, i) => <div key={i}>· {w}</div>)}
           </details>
         </div>
       )}

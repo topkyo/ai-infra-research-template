@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { loadEntries } from "@/lib/universe";
-import { fetchBenchmarkKlines, fetchKlines, fetchFundamental } from "@/lib/pyserver";
+import { fetchBenchmarkKlines, fetchKlines } from "@/lib/pyserver";
 import { runBacktest, type BacktestConfig, type SymbolSeries } from "@/lib/backtest";
 import { mapPool } from "@/lib/concurrent";
 import { saveBacktestResult } from "@/lib/cache";
@@ -61,12 +61,14 @@ export async function POST(req: NextRequest) {
         send({ type: "progress", phase: "loading", done: 0, total: universe.length });
         let loaded = 0;
         const loadErrors: string[] = [];
-        const loadWarnings: string[] = [];
         const loadedSeries = await mapPool(universe, LOAD_CONCURRENCY, async (entry): Promise<SymbolSeries | null> => {
-          const [klinesRes, fundRes] = await Promise.allSettled([
-            fetchKlines(entry.symbol, aksStart, aksEnd, BACKTEST_PYSERVER_TIMEOUT_MS),
-            fetchFundamental(entry.symbol, BACKTEST_PYSERVER_TIMEOUT_MS),
-          ]);
+          let klinesRes: PromiseSettledResult<Awaited<ReturnType<typeof fetchKlines>>>;
+          try {
+            const klines = await fetchKlines(entry.symbol, aksStart, aksEnd, BACKTEST_PYSERVER_TIMEOUT_MS);
+            klinesRes = { status: "fulfilled", value: klines };
+          } catch (reason) {
+            klinesRes = { status: "rejected", reason };
+          }
           loaded++;
           send({ type: "progress", phase: "loading", done: loaded, total: universe.length });
           if (klinesRes.status !== "fulfilled" || klinesRes.value.length < 20) {
@@ -76,30 +78,14 @@ export async function POST(req: NextRequest) {
             loadErrors.push(`${entry.symbol} ${entry.name}: ${why.slice(0, 160)}`);
             return null;
           }
-          const fund = fundRes.status === "fulfilled" ? fundRes.value : undefined;
-          if (fundRes.status !== "fulfilled") {
-            const why = fundRes.reason instanceof Error ? fundRes.reason.message : String(fundRes.reason);
-            loadWarnings.push(`${entry.symbol} ${entry.name} fundamental: ${why.slice(0, 160)}`);
-          }
           return {
             entry,
             klines: klinesRes.value,
-            fundamental: fund
-              ? {
-                  pe_ttm: fund.pe_ttm ?? null,
-                  pb: fund.pb ?? null,
-                  market_cap: fund.market_cap ?? null,
-                  profit_yoy: fund.profit_yoy ?? null,
-                }
-              : undefined,
           };
         });
         const series: SymbolSeries[] = loadedSeries.filter((x): x is SymbolSeries => x !== null);
 
         send({ type: "log", message: `${series.length} symbols loaded (${loadErrors.length} failed)` });
-        if (loadWarnings.length > 0) {
-          send({ type: "log", message: `${loadWarnings.length} fundamentals unavailable: ${loadWarnings.slice(0, 8).join("; ")}` });
-        }
         if (loadErrors.length > 0) {
           send({
             type: "error",

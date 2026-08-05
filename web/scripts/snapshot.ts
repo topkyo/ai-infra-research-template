@@ -147,7 +147,6 @@ export function loadSignalSnapshot(
 export function loadBacktestSeries(
   entry: UniverseEntry,
   klinesRes: PromiseSettledResult<Kline[]>,
-  fundamentalRes: PromiseSettledResult<Fundamental>,
 ): SnapshotLoad<SymbolSeries> {
   const warnings: string[] = [];
   if (klinesRes.status !== "fulfilled") {
@@ -163,21 +162,10 @@ export function loadBacktestSeries(
     };
   }
 
-  const fd = fundamentalRes.status === "fulfilled" ? fundamentalRes.value : undefined;
-  if (fundamentalRes.status === "rejected") {
-    warnings.push(`${entry.symbol} ${entry.name} fundamental: ${shortMessage(errorMessage(fundamentalRes.reason))}`);
-  }
-  if (fd?.warnings?.length) {
-    warnings.push(...fd.warnings.map((warning) => `${entry.symbol} ${entry.name} fundamental warning: ${warning}`));
-  }
-
   return {
     value: {
       entry,
       klines: klinesRes.value,
-      fundamental: fd
-        ? { pe_ttm: fd.pe_ttm ?? null, pb: fd.pb ?? null, market_cap: fd.market_cap ?? null, profit_yoy: fd.profit_yoy ?? null }
-        : undefined,
     },
     warnings,
   };
@@ -287,15 +275,13 @@ async function main() {
 
     console.log(`[backtest] window ${startDate} → ${endDate} — loading bars…`);
     const loads = await mapPool(u.entries, 6, async (entry) => {
-      const [klRes, fdRes] = await Promise.allSettled([
+      const [klRes] = await Promise.allSettled([
         fetchKlines(entry.symbol, aksStart, aksEnd),
-        fetchFundamental(entry.symbol),
       ]);
-      return loadBacktestSeries(entry, klRes, fdRes);
+      return loadBacktestSeries(entry, klRes);
     });
     const loadErrors = loads.flatMap((load) => load.error ? [load.error] : []);
     assertNoLoadErrors("backtest", loadErrors);
-    const warnings = loads.flatMap((load) => load.warnings);
     const series = loads.map((load) => load.value!);
     console.log(`[backtest] loaded ${series.length}/${u.entries.length}; running…`);
 
@@ -318,7 +304,7 @@ async function main() {
       stats: result.stats,
       equityCurve: result.equityCurve.map((b) => ({ date: b.date, equity: b.equity, cash: b.cash })),
       trades: result.trades,
-      warnings,
+      warnings: result.warnings,
     });
   } else {
     console.log("[backtest] skipped");

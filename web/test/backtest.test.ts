@@ -10,7 +10,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "scc-bt-"));
 process.chdir(tmp);
 
 import type { Kline } from "../lib/pyserver";
-import { runBacktest, type SymbolSeries, type Progress, type BacktestConfig, type Scorer } from "../lib/backtest";
+import { runBacktest, type SymbolSeries, type Progress, type BacktestConfig, type Scorer, BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING } from "../lib/backtest";
+import type { SymbolSnapshot } from "../lib/deepseek";
 
 // Deterministic scorer: always BUY A, SELL B with full size.
 const scorer: Scorer = async (snapshots) =>
@@ -54,6 +55,26 @@ const cfg: BacktestConfig = {
   feeBps: 0,
   maxPositions: 5,
 };
+
+test("runBacktest excludes static fundamentals from scorer snapshots to avoid look-ahead", async () => {
+  const seriesWithFundamental: SymbolSeries[] = makeSeries().map((s) => ({
+    ...s,
+    fundamental: { pe_ttm: 15, pb: 2, market_cap: 1000, profit_yoy: 20 },
+  }));
+  const captured: SymbolSnapshot[][] = [];
+  const capturingScorer: Scorer = async (snapshots, opts) => {
+    captured.push(snapshots);
+    return scorer(snapshots, opts);
+  };
+  const r = await runBacktest(seriesWithFundamental, cfg, { scorer: capturingScorer });
+  assert.ok(captured.length > 0);
+  for (const batch of captured) {
+    for (const snap of batch) {
+      assert.equal(snap.fundamental, undefined, `${snap.symbol} must not receive static fundamental in backtest`);
+    }
+  }
+  assert.ok(r.warnings?.includes(BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING));
+});
 
 test("runBacktest produces a result with expected shape", async () => {
   const r = await runBacktest(makeSeries(), cfg, { scorer });

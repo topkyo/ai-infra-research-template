@@ -1,12 +1,16 @@
-// Bar-by-bar backtest engine. Walks the price series forward, asks DeepSeek
-// for signals every `rebalanceEveryNDays` bars using only data available at
-// that point (look-ahead-free), and applies them to a virtual portfolio.
+// Bar-by-bar backtest engine. Walks the price series forward, asks the LLM
+// for signals every `rebalanceEveryNDays` bars using closes available at or
+// before each rebalance date. Static fundamentals are omitted from scorer
+// snapshots (no point-in-time history) to avoid look-ahead bias.
 //
 // Signals are cached by (model, messages) hash, so re-running the same
 // backtest is free in tokens — only adding new bars or symbols pays cost.
 import type { Kline } from "./pyserver";
 import { scoreSymbols, type SymbolSnapshot, type Signal } from "./deepseek";
 import type { UniverseEntry } from "./universe";
+import { BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING } from "./backtest-warnings";
+
+export { BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING } from "./backtest-warnings";
 
 export interface BacktestConfig {
   startCash: number;
@@ -68,6 +72,7 @@ export interface BenchmarkResult {
 export interface SymbolSeries {
   entry: UniverseEntry;
   klines: Kline[];
+  /** Ignored by runBacktest scoring — static values would introduce look-ahead. */
   fundamental?: SymbolSnapshot["fundamental"];
 }
 
@@ -140,7 +145,6 @@ function computeBenchmarkResult(
   klines: Kline[],
   startCash: number,
   meta: { id: string; name: string },
-  strategyTotalReturnPct: number,
 ): BenchmarkResult | undefined {
   const byDate = indexByDate(klines);
   const first = byDate.get(dates[0]);
@@ -158,8 +162,7 @@ function computeBenchmarkResult(
     name: meta.name,
     equityCurve,
     stats,
-    excessReturnPct: strategyTotalReturnPct - stats.totalReturnPct,
-  } as BenchmarkResult & { excessReturnPct?: number };
+  };
 }
 
 export type Scorer = (
@@ -205,9 +208,9 @@ export async function runBacktest(
   const symbols = series.map((s) => s.entry.symbol);
 
   const t0 = Date.now();
-  // Pre-fetch ALL rebalance signals in parallel. Signals at date D depend
-  // only on price history <= D, never on what we held — independent calls.
-  // Cached entries return instantly; uncached fire concurrently (bounded).
+  // Pre-fetch ALL rebalance signals in parallel. At date D, snapshots use
+  // closes with k.date <= D only; fundamentals are omitted (see warning below).
+  // Signal batches per date are independent of portfolio state.
   const rebalanceDates = dates.filter((_, i) => i % cfg.rebalanceEveryNDays === 0);
   const batchesPerDate = Math.max(1, Math.ceil(series.length / backtestBatchSize));
   const totalSignalUnits = rebalanceDates.length * batchesPerDate;
@@ -243,7 +246,6 @@ export async function runBacktest(
             name: s.entry.name,
             theme: s.entry.theme,
             closes: upto.map((k) => k.close),
-            fundamental: s.fundamental,
           };
         });
         const sigs = await scorer(snapshots, { asOf: d, mode: "backtest", batchSize: backtestBatchSize });
@@ -265,7 +267,7 @@ export async function runBacktest(
   const shares: Record<string, number> = Object.fromEntries(symbols.map((s) => [s, 0]));
   const equityCurve: PortfolioBar[] = [];
   const trades: BacktestResult["trades"] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = [BACKTEST_FUNDAMENTAL_EXCLUSION_WARNING];
   const fee = cfg.feeBps / 10_000;
   const slip = (cfg.slippageBps ?? 0) / 10_000;
   const respectLimits = cfg.respectPriceLimits !== false;
@@ -433,7 +435,6 @@ export async function runBacktest(
       opts.benchmark.klines,
       cfg.startCash,
       { id: opts.benchmark.id, name: opts.benchmark.name },
-      stats.totalReturnPct,
     );
     if (bench) {
       benchmark = bench;
@@ -448,7 +449,7 @@ export async function runBacktest(
     equityCurve,
     trades,
     signalsByDate,
-    warnings: warnings.length > 0 ? warnings : undefined,
+    warnings,
     stats,
     benchmark,
   };

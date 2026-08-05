@@ -14,7 +14,7 @@
 | AI 基建股票池 | 按产业环节维护 A 股主题标的，数据源为 [web/data/universe.json](web/data/universe.json)。 |
 | 行情与一致预期 | FastAPI sidecar 聚合现价、估值、成长、评级和隐含目标参考。 |
 | 组合持仓信号 | 结合真实或模拟持仓生成 5-20 个交易日目标仓位；失败时显式不可用，不合成伪结论。 |
-| 严格回测 | 按调仓周期增量重配（避免重复买卖），支持基准指数、单边费率与滑点、涨跌停封板限制（T+1 结构性满足）、信号缓存和结果存档。信号生成与成交均使用**当日收盘价**（close-to-close），不建模盘中路径；对动量类策略可能略偏乐观。 |
+| 严格回测 | 按调仓周期增量重配（避免重复买卖），支持基准指数、单边费率与滑点、涨跌停封板限制（T+1 结构性满足）、信号缓存和结果存档。信号生成与成交均使用**当日收盘价**（close-to-close），不建模盘中路径；对动量类策略可能略偏乐观。**LLM 打分仅使用截至调仓日的价格动量与主题标签**，静态 PE/PB/利润增速等基本面未纳入（无 point-in-time 历史基本面，避免 look-ahead）。 |
 | 静态快照 | 输出 `docs/data/*.json`，用于 Vercel（或 Pages）公开展示最近一次研究快照。 |
 
 ## 产品界面
@@ -66,7 +66,7 @@ scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 | 场景 | 路由 / 脚本 | 关键行为 |
 |---|---|---|
 | 实时信号 | `/api/signals` | POST `mode=real|paper`；真实模式读取本地持仓，LLM 对全池输出目标仓位；按 `SIGNALS_LLM_SCORE_BATCH_SIZE` 串行分批；模型 `LLM_MODEL`；route `maxDuration = 3600`。 |
-| 回测 | `/api/backtest` | 每个调仓日对全池打分；`BACKTEST_SIGNAL_CONCURRENCY` 并行调仓日，日内按 `BACKTEST_LLM_SCORE_BATCH_SIZE` 串行分批；route `maxDuration = 3600`。调仓日信号与成交均按**当日收盘价**执行（含首个调仓日），日频 close-to-close，不建模盘中路径；对动量策略可能略偏乐观。 |
+| 回测 | `/api/backtest` | 每个调仓日对全池打分；`BACKTEST_SIGNAL_CONCURRENCY` 并行调仓日，日内按 `BACKTEST_LLM_SCORE_BATCH_SIZE` 串行分批；route `maxDuration = 3600`。调仓日信号与成交均按**当日收盘价**执行（含首个调仓日），日频 close-to-close，不建模盘中路径；对动量策略可能略偏乐观。**打分输入不含静态基本面**（仅价格动量 + 主题），避免 look-ahead；结果 `warnings` 含中英文说明。 |
 | 股票池刷新 | `/api/universe/refresh` | 单次 LLM 审阅整池并提出增删改；`UNIVERSE_REFRESH_LLM_TIMEOUT_MS` 控制提议阶段；route `maxDuration = 900`。 |
 | 静态快照 | `web/scripts/snapshot.ts` | 生成股票池、分析师、信号和回测 JSON；可用 `SNAPSHOT_SKIP_SIGNALS=1` / `SNAPSHOT_SKIP_BACKTEST=1` 跳过重任务。 |
 
