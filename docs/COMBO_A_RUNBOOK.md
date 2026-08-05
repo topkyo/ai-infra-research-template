@@ -129,7 +129,11 @@ ssh -L 3000:127.0.0.1:3000 goyun
 - `health-watch.sh` 为兼容包装（`exec ea-watch.sh`），**勿再加入 cron**。
 - 日志轮转：`/etc/logrotate.d/ea-vps-scripts`（daily / 14 份 / `maxsize 20M`）。
 - 研究台日志：`.monitor/logs/vps-health-YYYY-MM-DD.log`。
-- 清理提示：`docker builder prune -af`、`docker image prune -a -f`（勿删正在跑的容器）。
+- **Docker 磁盘回收（强制习惯）:** 20G 根盘上 compose 重建易把使用率顶到 `DISK_WARN_PCT`（默认 85%）。
+  1. 仓库脚本：[`deploy/vps-scripts/docker-disk-prune.sh`](../deploy/vps-scripts/docker-disk-prune.sh) → 同步到 VPS `~/scripts/docker-disk-prune.sh`（`chmod +x`）。
+  2. **每次** `docker compose up -d --build` 成功后手动跑一次（或见 [DEPLOY.md](DEPLOY.md)）。
+  3. cron 每周兜底：见 [`deploy/vps-scripts/crontab.example`](../deploy/vps-scripts/crontab.example)（`15 4 * * 0`）。
+  4. 只清 build cache + **未被运行中容器引用**的镜像；**禁止** `docker system prune --volumes`（会伤 named volume）。
 
 ## 相关文档
 

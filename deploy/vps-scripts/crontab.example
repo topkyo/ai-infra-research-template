@@ -4,3 +4,5 @@
 */5 * * * * /home/tim/scripts/ea-watch.sh
 */5 * * * * /home/tim/scripts/tunnel-watch.sh
 7 * * * * /home/tim/github/ai-infra-dashboard/scripts/vps-healthcheck.sh
+# Docker disk reclaim (build cache + unused images). After heavy deploys also run once manually.
+15 4 * * 0 /home/tim/scripts/docker-disk-prune.sh

@@ -152,6 +152,12 @@ cp web/data/holdings.example.json private/holdings.local.json
 
 ```bash
 docker compose up -d --build
+# 小根盘（如狗云 20G）：回收 build cache / 旧镜像，避免 disk≥85% 告警
+# （需已同步 deploy/vps-scripts/docker-disk-prune.sh → ~/scripts/）
+~/scripts/docker-disk-prune.sh || {
+  docker builder prune -af
+  docker image prune -af
+}
 ```
 
 本机验证（在 VPS 上执行）：
@@ -159,6 +165,7 @@ docker compose up -d --build
 ```bash
 curl -sS http://127.0.0.1:8001/health
 curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/
+df -h /
 ```
 
 **不要**从公网直接访问 `:3000` 或 `:8001`；对外入口由 Caddy 提供。
@@ -225,3 +232,4 @@ git commit -m "chore: refresh public snapshot"
 | 静态页数据旧 | 重新运行 `web/scripts/snapshot.ts`，提交 `docs/data/` 并触发 Vercel 部署。 |
 | 外网可访问 8001 | 检查 `docker-compose.yml` 端口是否为 `127.0.0.1:8001`；确认防火墙与 Caddy 未反代 8001。 |
 | Compose 启动失败（web） | 确认 `private/holdings.local.json` 已存在（见 [private/README.md](../private/README.md)）。 |
+| 磁盘使用率 ≥85% 告警 | 多为 Docker build cache / 旧镜像（`/var/lib/containerd`）。跑 `~/scripts/docker-disk-prune.sh`；确认 weekly cron（见 Runbook §H）。勿 `prune --volumes`。 |

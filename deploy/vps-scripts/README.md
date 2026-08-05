@@ -11,8 +11,11 @@
 | `ea-watch.sh` | */5 | EA API / Caddy / simulators / mosquitto / cloudflared unit | `ea-api-http` / `ea-caddy-http` / `unit-*` |
 | `tunnel-watch.sh` | */5 | EA Tunnel URL 同步 Vercel + 外网 `/health`(每 30 分钟) | `tunnel-external` |
 | `health-watch.sh` | (勿入 cron) | 兼容包装,`exec ea-watch.sh` | — |
+| `docker-disk-prune.sh` | 周日 04:15（建议） | `docker builder prune` + 未使用镜像；不碰 volume/运行中容器 | — |
 
 dashboard 侧脚本在仓库 `scripts/vps-healthcheck.sh`(每小时),其 `ALERT_KEY`:`dashboard-compose` / `dashboard-docker` / `dashboard-http` / `disk-crit`。
+
+**磁盘（20G 根盘）:** compose/`docker build` 会留下 build cache 与旧 tag。部署后建议立刻跑一次 `~/scripts/docker-disk-prune.sh`；cron 每周兜底。勿对生产 volume 使用 `docker system prune --volumes`。
 
 ## 密钥
 
