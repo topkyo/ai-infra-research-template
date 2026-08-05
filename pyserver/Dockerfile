@@ -9,6 +9,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY main.py mock_data.py cache.py validation.py analyst.py \
      config.py models.py symbols.py util.py http_util.py ./
 COPY providers ./providers
+COPY routes ./routes
 # Empty token = free live sources (akshare/baostock); set "mock" only for demos/tests.
 ENV TUSHARE_TOKEN=""
 ENV TZ=Asia/Shanghai
