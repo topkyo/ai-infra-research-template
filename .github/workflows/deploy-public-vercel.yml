@@ -1,7 +1,7 @@
 # Optional: deploy the public docs/ snapshot to Vercel (Combo A public plane).
 #
 # Operator prerequisites (GitHub repo Settings → Secrets and variables → Actions):
-#   VERCEL_TOKEN      — Vercel account token (Account Settings → Tokens)
+#   VERCEL_TOKEN      — Vercel token (Account or project-scoped vcp_… both OK)
 #   VERCEL_ORG_ID     — Team or personal ID from the Vercel project settings
 #   VERCEL_PROJECT_ID — Project ID from the Vercel project settings
 #
@@ -10,8 +10,10 @@
 #   - Root Directory = docs  (NOT web/ — do not deploy the Next.js app)
 #   - Framework Preset = Other (static site; no build command)
 #
-# If secrets are missing or the token is invalid/expired, deploy is skipped (or
-# warned) and the workflow succeeds — public snapshot deploy is optional.
+# Uses `vercel deploy` directly (not amondnet/vercel-action): project-scoped
+# tokens return 404 on /v2/user, which breaks whoami-based actions.
+# If secrets are missing or deploy fails, the workflow warns and succeeds —
+# public snapshot deploy is optional.
 
 name: deploy-public-vercel
 
@@ -51,17 +53,17 @@ jobs:
         id: deploy
         if: steps.secrets.outputs.configured == 'true'
         continue-on-error: true
-        uses: amondnet/vercel-action@v25.2.0
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./docs
-          vercel-args: "--prod"
-          # Action default pins ancient CLI; API now requires >=47.2.2
-          vercel-version: latest
+        working-directory: ./docs
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          mkdir -p .vercel
+          printf '%s\n' "{\"projectId\":\"${VERCEL_PROJECT_ID}\",\"orgId\":\"${VERCEL_ORG_ID}\"}" > .vercel/project.json
+          npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN"
 
       - name: Surface optional deploy failure
         if: steps.secrets.outputs.configured == 'true' && steps.deploy.outcome != 'success'
         run: |
-          echo "::warning title=Vercel deploy failed::Public snapshot deploy is optional. If the log says the token is not valid, rotate it (Vercel → Account Settings → Tokens) and run: gh secret set VERCEL_TOKEN"
+          echo "::warning title=Vercel deploy failed::Public snapshot deploy is optional. Rotate token if needed (Vercel → Tokens), then: gh secret set VERCEL_TOKEN. Project-scoped vcp_ tokens are supported by this workflow."
