@@ -10,7 +10,8 @@
 #   - Root Directory = docs  (NOT web/ — do not deploy the Next.js app)
 #   - Framework Preset = Other (static site; no build command)
 #
-# If secrets are missing, the deploy step is skipped and the workflow succeeds.
+# If secrets are missing or the token is invalid/expired, deploy is skipped (or
+# warned) and the workflow succeeds — public snapshot deploy is optional.
 
 name: deploy-public-vercel
 
@@ -47,7 +48,9 @@ jobs:
           fi
 
       - name: Deploy static docs snapshot to Vercel
+        id: deploy
         if: steps.secrets.outputs.configured == 'true'
+        continue-on-error: true
         uses: amondnet/vercel-action@v25.2.0
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -57,3 +60,8 @@ jobs:
           vercel-args: "--prod"
           # Action default pins ancient CLI; API now requires >=47.2.2
           vercel-version: latest
+
+      - name: Surface optional deploy failure
+        if: steps.secrets.outputs.configured == 'true' && steps.deploy.outcome != 'success'
+        run: |
+          echo "::warning title=Vercel deploy failed::Public snapshot deploy is optional. If the log says the token is not valid, rotate it (Vercel → Account Settings → Tokens) and run: gh secret set VERCEL_TOKEN"
