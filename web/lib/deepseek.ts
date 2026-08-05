@@ -4,299 +4,47 @@
 //   1. Rule code ranks candidates and annotates data quality.
 //   2. LLM is the buy/hold/sell decision source for ranked candidates.
 //   3. Deterministic code validates LLM output and enforces portfolio rules.
-import { cachedWithMeta } from "./cache";
-import { llmApiKeyConfigured, resolveLlmConfig } from "./llm/config";
+import { resolveLlmConfig } from "./llm/config";
+import { PORTFOLIO_STRATEGY_SYSTEM, STRATEGY_SYSTEM } from "./llm/prompts";
+import {
+  chat,
+  chatDetailed,
+  isRetryableTransportError,
+  LlmHttpError,
+  retryDelayMs,
+} from "./llm/transport";
+import type {
+  ChatMessage,
+  ChatOptions,
+  ChatResult,
+  PortfolioPositionInput,
+  PortfolioScoringSnapshot,
+  PortfolioTargetSignal,
+  Signal,
+  SignalSource,
+  SymbolSnapshot,
+} from "./llm/types";
 import { buildRuleFeatures } from "./scoring/rules";
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
+export type {
+  ChatMessage,
+  ChatOptions,
+  ChatResult,
+  PortfolioPositionInput,
+  PortfolioScoringSnapshot,
+  PortfolioTargetSignal,
+  Signal,
+  SignalSource,
+  SymbolSnapshot,
+};
 
-export interface ChatOptions {
-  model?: string;
-  temperature?: number;
-  responseFormat?: "json_object" | "text";
-  ttlSeconds?: number;
-  bypassCache?: boolean;
-  timeoutMs?: number;
-  transportMaxAttempts?: number;
-}
-
-export interface ChatResult {
-  content: string;
-  cacheHit: boolean;
-}
-
-export class LlmHttpError extends Error {
-  constructor(
-    public readonly provider: string,
-    public readonly status: number,
-    public readonly body: string,
-  ) {
-    super(`${provider} ${status}: ${body}`);
-  }
-}
-
-function truncateErrorBody(body: string): string {
-  const text = body.trim();
-  return text.length > 500 ? `${text.slice(0, 500)}...` : text;
-}
-
-/** Network / undici codes worth a transport retry. Config bugs (e.g. ERR_INVALID_URL) stay out. */
-const RETRYABLE_CAUSE_CODES = new Set([
-  "ECONNRESET",
-  "ECONNREFUSED",
-  "ETIMEDOUT",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "EPIPE",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_BODY_TIMEOUT",
-  "UND_ERR_SOCKET",
-  "UND_ERR_CLOSED",
-]);
-
-export function isRetryableTransportError(error: unknown): boolean {
-  if (error instanceof LlmHttpError) {
-    return [408, 429, 500, 502, 503, 504].includes(error.status);
-  }
-  if (error instanceof TypeError) {
-    // undici: TypeError("fetch failed") for many network failures.
-    if (error.message === "fetch failed") return true;
-    const cause = (error as { cause?: unknown }).cause;
-    const code = (cause as { code?: unknown } | null | undefined)?.code;
-    if (typeof code !== "string") return false;
-    return RETRYABLE_CAUSE_CODES.has(code) || code.startsWith("UND_ERR_");
-  }
-  return false;
-}
-
-/** Backoff for transport retries: honor Retry-After when present, else linear + jitter. */
-export function retryDelayMs(attempt: number, retryAfterHeader: string | null | undefined): number {
-  if (retryAfterHeader) {
-    const sec = Number(retryAfterHeader);
-    if (Number.isFinite(sec) && sec >= 0) return Math.min(sec * 1000, 60_000);
-    const dateMs = Date.parse(retryAfterHeader);
-    if (!Number.isNaN(dateMs)) return Math.min(Math.max(dateMs - Date.now(), 0), 60_000);
-  }
-  const base = 750 * (attempt + 1);
-  const jitter = Math.floor(Math.random() * 250);
-  return base + jitter;
-}
-
-function extractMessageContent(message: Record<string, unknown> | undefined): string {
-  if (!message) return "";
-  const content = message.content;
-  if (typeof content === "string" && content.trim()) return content;
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part) => (typeof part === "object" && part && "text" in part ? String((part as { text?: string }).text ?? "") : ""))
-      .join("")
-      .trim();
-    if (text) return text;
-  }
-  const reasoning = message.reasoning_content;
-  if (typeof reasoning === "string" && reasoning.trim()) return reasoning;
-  return "";
-}
-
-export async function chatDetailed(
-  messages: ChatMessage[],
-  opts: ChatOptions = {},
-): Promise<ChatResult> {
-  const cfg = resolveLlmConfig();
-  if (!llmApiKeyConfigured(cfg)) {
-    throw new Error(
-      cfg.provider === "mock"
-        ? "LLM_PROVIDER=mock: this code path has no mock implementation"
-        : cfg.provider === "opencode-go"
-          ? "OPENCODE_GO_API_KEY is not set"
-          : "DEEPSEEK_API_KEY is not set",
-    );
-  }
-  const model = opts.model ?? cfg.model;
-  const temperature = opts.temperature ?? 0.2;
-  const responseFormat = opts.responseFormat ?? "text";
-  const ttl = opts.ttlSeconds ?? 12 * 3600;
-
-  const cacheParts = {
-    provider: cfg.provider,
-    model,
-    temperature,
-    responseFormat,
-    messages,
-  };
-  const llmTimeoutMs = opts.timeoutMs ?? Number(process.env.LLM_TIMEOUT_MS ?? 120_000);
-  const transportMaxAttempts = opts.transportMaxAttempts
-    ?? envPositiveInt("LLM_TRANSPORT_MAX_ATTEMPTS", 3);
-
-  const doFetch = async () => {
-    const body: Record<string, unknown> = {
-      model,
-      messages,
-      temperature,
-      stream: false,
-    };
-    if (responseFormat === "json_object") {
-      body.response_format = { type: "json_object" };
-    }
-    let lastError: unknown;
-    for (let attempt = 0; attempt < transportMaxAttempts; attempt++) {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), llmTimeoutMs);
-      try {
-        const r = await fetch(cfg.chatCompletionsUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cfg.apiKey}`,
-          },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        });
-        if (!r.ok) {
-          const retryAfter = r.headers.get("retry-after");
-          lastError = new LlmHttpError(cfg.provider, r.status, truncateErrorBody(await r.text()));
-          if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(lastError)) {
-            // Clear before sleeping so the abort timer cannot fire mid-backoff.
-            clearTimeout(timer);
-            await sleep(retryDelayMs(attempt, retryAfter));
-            continue;
-          }
-          break;
-        }
-        // Keep the abort timer armed through body read — a stalled stream
-        // should not hang past llmTimeoutMs (and in-flight cache joiners).
-        const j = (await r.json()) as {
-          choices?: { message?: Record<string, unknown> }[];
-        };
-        const content = extractMessageContent(j.choices?.[0]?.message);
-        if (!content.trim()) {
-          throw new Error(`${cfg.provider} returned empty content`);
-        }
-        return content;
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") {
-          throw new Error(`${cfg.provider} timed out after ${llmTimeoutMs}ms`);
-        }
-        lastError = e;
-        if (attempt < transportMaxAttempts - 1 && isRetryableTransportError(e)) {
-          clearTimeout(timer);
-          await sleep(retryDelayMs(attempt, null));
-          continue;
-        }
-        break;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    if (transportMaxAttempts > 1 && isRetryableTransportError(lastError)) {
-      const message = lastError instanceof Error ? lastError.message : String(lastError);
-      throw new Error(`${cfg.provider} transport failed after ${transportMaxAttempts} attempts: ${message}`);
-    }
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
-  };
-
-  if (opts.bypassCache) {
-    return { content: await doFetch(), cacheHit: false };
-  }
-  const result = await cachedWithMeta(cacheParts, ttl, doFetch);
-  return { content: result.value, cacheHit: result.cacheHit };
-}
-
-export async function chat(
-  messages: ChatMessage[],
-  opts: ChatOptions = {},
-): Promise<string> {
-  return (await chatDetailed(messages, opts)).content;
-}
-
-// ----- Strategy-specific helpers ------------------------------------------
-
-export interface SymbolSnapshot {
-  symbol: string;
-  name?: string | null;
-  theme?: string;
-  closes: number[];      // last ~60 daily closes, oldest first
-  fundamental?: {
-    pe_ttm?: number | null;
-    pb?: number | null;
-    market_cap?: number | null;
-    profit_yoy?: number | null;
-  };
-}
-
-export type SignalSource = "llm-live" | "llm-cache" | "llm-mock";
-
-export interface Signal {
-  symbol: string;
-  action: "buy" | "hold" | "sell";
-  confidence: number;    // 0..1
-  size: number;          // 0..1 fraction of available capital
-  rationale: string;
-  source?: SignalSource;
-  dataQuality?: string[];
-}
-
-export interface PortfolioPositionInput {
-  shares: number;
-  costBasis: number;
-  currentWeight: number;
-  unrealizedPnlPct: number | null;
-}
-
-export interface PortfolioScoringSnapshot extends SymbolSnapshot {
-  position?: PortfolioPositionInput | null;
-}
-
-export interface PortfolioTargetSignal {
-  symbol: string;
-  targetWeight: number;
-  confidence: number;
-  rationale: string;
-  evidence: string[];
-  risks: string[];
-  invalidation: string;
-  source?: SignalSource;
-  dataQuality?: string[];
-}
-
-const STRATEGY_SYSTEM = `你是一名专注于"硅基文明消费"主题的中国市场量化策略师。
-
-主题定义：将 AI / 硅基文明视为一个新兴文明，其自身需要"消费"的不是人类消费品，
-而是支撑算力存在与扩张的基础投入——算力芯片、光模块/高速互连、AI 服务器、
-液冷散热、电力(尤其绿电与核电)、IDC 数据中心、HBM/存储、半导体设备与材料、
-高速 PCB、晶圆代工、云计算。我们做多这些"喂养"硅基文明的卖铲人。
-
-任务：给定一组上述主题股票的近期价格序列与基本面快照，输出 5-20 个交易日的
-交易动作。三大维度平衡评估：基本面估值（PEG/利润增速/估值匹配）、主题景气度
-（算力需求边际变化、订单/出货传导、市值位置）、价格动量（趋势、均线、动量与
-拥挤度）。
-
-决策权重：基本面估值约 40%，主题景气度约 30%，价格动量与择时约 30%。三者中
-任意一项强势均可成为买入理由；高 PE 但利润增速与主题景气度同时强、且价格处于
-有效突破的标的可以买入；PEG 偏低但主题/动量同时走弱的标的不必强买。卖出条件：
-PEG 显著恶化、或主题景气度反转、或价格跌破关键均线且伴随成交萎缩。
-
-严格输出 JSON：{"signals":[{"symbol":"...","action":"buy|hold|sell","confidence":0..1,"size":0..1,"rationale":"中文,<=60字"}]}
-必须覆盖输入中的每一个 symbol，且每个 symbol 只能出现一次。
-不要输出任何其他文本。`;
-
-const PORTFOLIO_STRATEGY_SYSTEM = `你是一名专注于 AI 基建主题的中国 A 股持仓决策辅助分析师。
-
-任务：基于股票池、近期收盘价、基本面、规则特征和当前持仓上下文，输出未来 5-20 个交易日的目标仓位建议。
-目标仓位是组合权益百分比，范围 0..1。不要假设可以自动交易；你的输出只用于人工复核。
-
-评估框架：基本面估值 40%、主题景气度 30%、价格动量与择时 30%。已有持仓要考虑浮盈亏、趋势破坏、估值恶化和是否值得继续占用仓位。
-数据缺失必须体现在 risks 或 invalidation 中，不得用猜测补足。
-
-严格输出 JSON：{"signals":[{"symbol":"...","targetWeight":0..1,"confidence":0..1,"rationale":"中文,<=80字","evidence":["中文,<=80字"],"risks":["中文,<=80字"],"invalidation":"中文,<=80字"}]}
-必须覆盖输入中的每一个 symbol，且每个 symbol 只能出现一次。evidence 和 risks 必须是非空数组；如果证据或风险来自数据缺失，也要明确写出对应缺失字段。
-不要输出任何其他文本。`;
+export {
+  chat,
+  chatDetailed,
+  isRetryableTransportError,
+  LlmHttpError,
+  retryDelayMs,
+};
 
 const MIN_SCORABLE_KLINES = 10;
 const DEFAULT_SCORE_BATCH_SIZE = 10;
