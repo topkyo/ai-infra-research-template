@@ -25,6 +25,7 @@
     "recharts": "^2.13.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",

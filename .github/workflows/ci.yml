@@ -33,6 +33,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Dependency audit (high+)
+        continue-on-error: true
+        run: |
+          if ! npm audit --audit-level=high; then
+            echo "::warning title=npm audit::High-severity vulnerabilities remain in transitive deps (postcss/sharp via next@15). Fix requires next@16 — tracked as residual audit debt."
+            exit 1
+          fi
+
       - name: Type-check
         run: ./node_modules/.bin/tsc --noEmit
 

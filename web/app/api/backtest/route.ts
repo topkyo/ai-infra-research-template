@@ -110,14 +110,13 @@ export async function POST(req: NextRequest) {
         }
 
         const benchmarkIndex = body.benchmarkIndex ?? "csi300";
-        let benchmarkOpt: { id: string; name: string; klines: import("@/lib/pyserver").Kline[] } | undefined;
         const benchKlines = await fetchBenchmarkKlines(benchmarkIndex, aksStart, aksEnd, BACKTEST_PYSERVER_TIMEOUT_MS);
         if (benchKlines.length < 20) {
           send({ type: "error", message: `benchmark ${benchmarkIndex} has only ${benchKlines.length} bars` });
           controller.close();
           return;
         }
-        benchmarkOpt = {
+        const benchmarkOpt = {
           id: benchmarkIndex,
           name: benchmarkIndex === "star50" ? "科创50" : benchmarkIndex === "csi500" ? "中证500" : "沪深300",
           klines: benchKlines,
