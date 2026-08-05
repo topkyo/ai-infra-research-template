@@ -13,71 +13,79 @@ per symbol per trading day (klines/fundamentals/analyst) or per 30s (spot).
 """
 from __future__ import annotations
 
+import config  # noqa: F401 — load .env and proxy env before cache import
+
 import io
-import logging
-import os
 import re
 import time
 from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import akshare as ak
 import baostock as bs
 import pandas as pd
-import requests
 import tushare as ts
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
 
-# ---------- bootstrap ------------------------------------------------------
-
-load_dotenv(Path(__file__).parent / ".env")
-
-logging.basicConfig(
-    level=os.environ.get("PYSERVER_LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+from config import (
+    CACHE_NAMESPACE,
+    HAS_TUSHARE_TOKEN,
+    MARKET_ENABLE_TUSHARE_SECONDARY,
+    MARKET_HTTP_PROXY,
+    MOCK_MODE,
+    NEGATIVE_CACHE,
+    STRICT_LIVE_DATA,
+    TUSHARE_TOKEN,
+    _QUOTE_SOURCE_KEY,
+    log,
 )
-log = logging.getLogger("pyserver")
+from util import (
+    _ak_col,
+    _empty_bars_ttl,
+    _market_cap_to_yi,
+    _num_or_none,
+    _source_summary,
+    seconds_until_next_trading_close as _seconds_until_next_trading_close,
+)
+from http_util import (
+    _AK_LOCK,
+    _BS_LOCK,
+    _DAILY_BASIC_LIMITER,
+    _FINA_INDICATOR_LIMITER,
+    _REPORT_RC_LIMITER,
+    _TokenBucket,
+    _ak_call,
+    _market_http_get,
+    _market_http_session,
+    _with_retries as _with_retries_impl,
+)
+from models import Analyst, Fundamental, Kline, Spot
+from symbols import (
+    _cache_ts_code,
+    _compact_code,
+    _eastmoney_market_code,
+    _echo_request_symbol,
+    _infer_market_prefix,
+    _to_ts_code,
+)
 
 
-MARKET_HTTP_PROXY = os.environ.get("MARKET_HTTP_PROXY", "").strip()
+def seconds_until_next_trading_close() -> int:
+    return _seconds_until_next_trading_close(_now=datetime.now, _timedelta=timedelta)
 
 
-def _strip_proxy_env() -> None:
-    """Use MARKET_HTTP_PROXY when set (VPN); else drop broken inherited proxies."""
-    for key in (
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "ALL_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "all_proxy",
-    ):
-        os.environ.pop(key, None)
-    if MARKET_HTTP_PROXY:
-        os.environ["HTTP_PROXY"] = MARKET_HTTP_PROXY
-        os.environ["HTTPS_PROXY"] = MARKET_HTTP_PROXY
-        return
-    os.environ.setdefault(
-        "NO_PROXY",
-        "localhost,127.0.0.1,::1,push2.eastmoney.com,push2his.eastmoney.com,.eastmoney.com,hq.sinajs.cn,.sinajs.cn",
+def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwargs):
+    return _with_retries_impl(
+        fn,
+        *args,
+        attempts=attempts,
+        base_delay=base_delay,
+        _sleep=time.sleep,
+        **kwargs,
     )
 
 
-_strip_proxy_env()
-TUSHARE_TOKEN = os.environ.get("TUSHARE_TOKEN", "").strip()
-MOCK_MODE = TUSHARE_TOKEN.lower() == "mock"
-HAS_TUSHARE_TOKEN = TUSHARE_TOKEN.lower() not in {"", "mock", "your-tushare-pro-token-here"}
-STRICT_LIVE_DATA = os.environ.get("STRICT_LIVE_DATA", "0").strip() == "1"
-MARKET_ENABLE_TUSHARE_SECONDARY = os.environ.get("MARKET_ENABLE_TUSHARE_SECONDARY", "0").strip() == "1"
-if STRICT_LIVE_DATA and MOCK_MODE:
-    raise RuntimeError("STRICT_LIVE_DATA=1 requires a real TUSHARE_TOKEN")
-if MARKET_ENABLE_TUSHARE_SECONDARY and not HAS_TUSHARE_TOKEN:
-    raise RuntimeError("MARKET_ENABLE_TUSHARE_SECONDARY=1 requires a real TUSHARE_TOKEN")
-CACHE_NAMESPACE = "mock" if MOCK_MODE else "live"
 # Cache lives in cache.py; importing it here (after .env is loaded) resolves
 # DB_PATH and runs _init_db() once. Names are re-exported so existing call
 # sites and tests keep working via main.DB_PATH / main.db / main.cache_*.
@@ -95,7 +103,7 @@ from cache import (  # noqa: E402
 
 # cache_get/cache_put read CACHE_NAMESPACE from cache.py's module globals at
 # call time, so mirror the mock/live choice into the cache module here.
-cache_mod.CACHE_NAMESPACE = CACHE_NAMESPACE
+cache_mod.CACHE_NAMESPACE = config.CACHE_NAMESPACE
 
 from mock_data import BENCHMARKS  # noqa: E402
 if MOCK_MODE:
@@ -112,107 +120,7 @@ elif MARKET_ENABLE_TUSHARE_SECONDARY:
 else:
     _pro = None
 
-NEGATIVE_CACHE = {"__negative_cache__": True}
-
-# Bypass broken shell proxies (e.g. 127.0.0.1:7890) for market quote HTTP clients.
-_MARKET_HTTP_SESSION: requests.Session | None = None
-_QUOTE_SOURCE_KEY = "_quote_source"
-
-
-def _market_http_session() -> requests.Session:
-    global _MARKET_HTTP_SESSION
-    if _MARKET_HTTP_SESSION is None:
-        _MARKET_HTTP_SESSION = requests.Session()
-        _MARKET_HTTP_SESSION.trust_env = False
-        if MARKET_HTTP_PROXY:
-            _MARKET_HTTP_SESSION.proxies = {
-                "http": MARKET_HTTP_PROXY,
-                "https": MARKET_HTTP_PROXY,
-            }
-    return _MARKET_HTTP_SESSION
-
-
-def _market_http_get(
-    url: str,
-    *,
-    params: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    timeout: float = 3,
-) -> requests.Response:
-    return _market_http_session().get(url, params=params, headers=headers, timeout=timeout)
-
-
 app = FastAPI(title="topkyo pyserver", version="0.2.0")
-
-
-def seconds_until_next_trading_close() -> int:
-    """TTL so daily klines refresh after the next 15:30 CN market close."""
-    now = datetime.now()
-    target = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    if now >= target:
-        target += timedelta(days=1)
-    return int((target - now).total_seconds())
-
-
-def _empty_bars_ttl(end: str) -> int:
-    """Short TTL only when the window can still grow; closed windows are immutable."""
-    return 300 if end >= date.today().strftime("%Y%m%d") else 24 * 3600
-
-
-# ---------- retry wrapper + per-endpoint rate limiter ----------------------
-
-import threading
-from collections import deque
-
-
-class _TokenBucket:
-    """Simple token bucket — at most `n` calls per `window_s` seconds."""
-
-    def __init__(self, n: int, window_s: float) -> None:
-        self.n = n
-        self.window = window_s
-        self.calls: deque[float] = deque()
-        self.lock = threading.Lock()
-
-    def acquire(self) -> None:
-        while True:
-            with self.lock:
-                now = time.monotonic()
-                while self.calls and now - self.calls[0] > self.window:
-                    self.calls.popleft()
-                if len(self.calls) < self.n:
-                    self.calls.append(now)
-                    return
-                wait = self.window - (now - self.calls[0]) + 0.05
-            time.sleep(wait)
-
-
-# Tushare free tier caps hk_daily at 2/minute. Self-throttle to avoid 502s.
-_REPORT_RC_LIMITER = _TokenBucket(n=2, window_s=65)
-_DAILY_BASIC_LIMITER = _TokenBucket(n=2, window_s=65)
-_FINA_INDICATOR_LIMITER = _TokenBucket(n=2, window_s=65)
-_AK_LOCK = threading.Lock()
-_BS_LOCK = threading.Lock()
-
-
-def _ak_call(fn, *args, **kwargs):
-    # Some AkShare paths use native JavaScript runtimes that are not safe when
-    # entered concurrently from FastAPI's worker threads.
-    with _AK_LOCK:
-        return fn(*args, **kwargs)
-
-
-def _with_retries(fn, *args, attempts: int = 3, base_delay: float = 0.5, **kwargs):
-    last: Exception | None = None
-    for i in range(attempts):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:  # noqa: BLE001
-            last = e
-            if i < attempts - 1:
-                time.sleep(base_delay * (2 ** i))
-    assert last is not None
-    raise last
 
 
 def _report_rc(**kwargs):
@@ -287,130 +195,6 @@ def _attach_profit_yoy(out: dict[str, Any], ts_code: str, market: str) -> None:
         out.setdefault("field_sources", {})["profit_yoy"] = "tushare_fina_indicator"
 
 
-def _source_summary(field_sources: dict[str, str]) -> str:
-    providers = {
-        source.split("_", 1)[0]
-        for source in field_sources.values()
-        if not source.startswith("derived_")
-    }
-    if not providers:
-        return "unknown"
-    if providers == {"akshare"}:
-        return "akshare_primary"
-    if providers == {"tushare"}:
-        return "tushare_only"
-    if providers == {"baostock"}:
-        return "baostock_only"
-    if {"akshare", "baostock", "tushare"}.issubset(providers):
-        return "akshare+baostock+tushare"
-    if "akshare" in providers and "tushare" in providers:
-        return "akshare+tushare"
-    if "akshare" in providers and "baostock" in providers:
-        return "akshare+baostock"
-    if "baostock" in providers and "tushare" in providers:
-        return "baostock+tushare"
-    return "unknown"
-
-
-# ---------- models ---------------------------------------------------------
-
-
-class Kline(BaseModel):
-    date: str
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-
-
-class Fundamental(BaseModel):
-    symbol: str
-    name: str | None = None
-    pe_ttm: float | None = None
-    pb: float | None = None
-    market_cap: float | None = None  # 亿元
-    latest_close: float | None = None
-    latest_date: str | None = None
-    change_pct: float | None = None
-    profit_yoy: float | None = None
-    source: str | None = None
-    fetched_at: str | None = None
-    error: str | None = None
-    warnings: list[str] | None = None
-    field_sources: dict[str, str] | None = None
-
-
-class Analyst(BaseModel):
-    symbol: str
-    buy_count: int | None = None
-    total_count: int | None = None
-    buy_ratio: float | None = None
-    consensus_eps_next: float | None = None
-    implied_target: float | None = None
-    current_price: float | None = None
-    upside_pct: float | None = None
-    source: str | None = None
-    fetched_at: str | None = None
-    error: str | None = None
-    warnings: list[str] | None = None
-    field_sources: dict[str, str] | None = None
-
-
-class Spot(BaseModel):
-    symbol: str
-    name: str
-    price: float
-    change_pct: float | None = None
-    volume: float | None = None
-    turnover: float | None = None
-    source: str | None = None
-    fetched_at: str | None = None
-    warnings: list[str] | None = None
-
-
-# ---------- symbol normalization -------------------------------------------
-
-
-def _to_ts_code(symbol: str) -> tuple[str, str]:
-    """Convert internal symbol -> (ts_code, market). market in {sh, sz, bj, hk}."""
-    s = symbol.lower().strip()
-    if "." in s:
-        code, suffix = s.split(".", 1)
-        mkt = suffix[:2]
-        if mkt in {"sh", "sz", "bj"}:
-            return code + {"sh": ".SH", "sz": ".SZ", "bj": ".BJ"}[mkt], mkt
-        if mkt == "hk":
-            return code.zfill(5) + ".HK", "hk"
-    if s.startswith(("sh", "sz", "bj")):
-        code, mkt = s[2:], s[:2]
-    elif s.startswith("hk"):
-        code, mkt = s[2:].zfill(5), "hk"
-    elif s.startswith(("60", "68", "9")):
-        code, mkt = s, "sh"
-    elif s.startswith(("00", "30", "20")):
-        code, mkt = s, "sz"
-    elif s.startswith(("8", "4")):
-        code, mkt = s, "bj"
-    else:
-        code, mkt = s.zfill(5), "hk"
-    suffix = {"sh": ".SH", "sz": ".SZ", "bj": ".BJ", "hk": ".HK"}[mkt]
-    return code + suffix, mkt
-
-
-def _cache_ts_code(symbol: str) -> str:
-    """Canonical ts_code for symbol-scoped cache keys."""
-    ts_code, _ = _to_ts_code(symbol)
-    return ts_code
-
-
-def _echo_request_symbol(cached: Any, symbol: str) -> Any:
-    """On cache hit, return payload with symbol matching the current request."""
-    if isinstance(cached, dict) and "symbol" in cached:
-        return {**cached, "symbol": symbol}
-    return cached
-
-
 # ---------- input validation whitelist -------------------------------------
 
 # Validators live in validation.py; re-exported here so existing call sites
@@ -429,50 +213,6 @@ from validation import (  # noqa: E402
 # the circular dependency (main imports analyst, analyst imports main at call
 # time).
 from analyst import register_routes as register_analyst_routes  # noqa: E402
-
-
-def _num_or_none(value: Any) -> float | None:
-    if value is None or pd.isna(value):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).replace(",", "")
-    matches = re.findall(r"-?\d+(?:\.\d+)?", text)
-    if len(matches) == 1:
-        return float(matches[0])
-    log.warning(
-        "_num_or_none: expected exactly one number in %r, found %d",
-        value,
-        len(matches),
-    )
-    return None
-
-
-def _compact_code(ts_code: str) -> str:
-    return ts_code.split(".")[0]
-
-
-def _ak_col(row: pd.Series, *names: str) -> Any:
-    for name in names:
-        if name in row and pd.notna(row.get(name)):
-            return row.get(name)
-    return None
-
-
-def _market_cap_to_yi(value: float | None) -> float | None:
-    if value is None:
-        return None
-    # AkShare's Eastmoney spot endpoint reports market cap in yuan. Keep this
-    # defensive in case an alternate backend already returns 亿元.
-    if abs(value) > 1_000_000:
-        return value / 1e8
-    return value
-
-
-def _eastmoney_market_code(market: str) -> int:
-    # Eastmoney uses 1 for Shanghai and 0 for Shenzhen/Beijing in these quote
-    # endpoints.
-    return 1 if market == "sh" else 0
 
 
 _AK_HIST_RENAME = {
@@ -535,14 +275,6 @@ def _ak_a_hist_df(code: str, start: str, end: str, adjust: str = "qfq") -> pd.Da
     if df.empty:
         return df
     return df
-
-
-def _infer_market_prefix(code: str) -> str:
-    if code.startswith(("60", "68", "9")):
-        return "sh"
-    if code.startswith(("8", "4")):
-        return "bj"
-    return "sz"
 
 
 def _rows_from_ak_hist(df: pd.DataFrame) -> list[dict[str, Any]]:
