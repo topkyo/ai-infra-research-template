@@ -111,7 +111,12 @@ function renderKpis({ universe, analyst, signals, backtest, meta }) {
       el("span", {}, sub),
     ]));
   }
-  $("#meta-line").textContent = `数据生成时间：${stampStr} · 股票池更新：${universe.updated_at} (${universe.updated_by})`;
+  let metaLine = `数据生成时间：${stampStr} · 股票池更新：${universe.updated_at} (${universe.updated_by})`;
+  const backtestMeta = meta?.backtest;
+  if (backtestMeta && backtestMeta.included === false && backtestMeta.retained_generated_at) {
+    metaLine += ` · 回测沿用至 ${formatBeijingDateTime(backtestMeta.retained_generated_at)}`;
+  }
+  $("#meta-line").textContent = metaLine;
 }
 
 // ---------- Universe table ----------
