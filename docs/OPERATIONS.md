@@ -198,7 +198,7 @@ cd ~/github/ai-infra-dashboard
   ```
   这样 Compose（uid 1001）与宿主机脚本都能写。勿长期只用 `chown 1001:1001` 却从宿主机跑 `refresh-universe`。
 - **公开快照只认 VPS CLI**：`docs/data/*.json` 已 gitignore，不进仓库；GitHub Actions **不会**再部署公开数据。合并 `docs/*.md` 不会盖掉 Vercel。见 [specs/2026-08-06-public-snapshot-source-of-truth.md](specs/2026-08-06-public-snapshot-source-of-truth.md)。
-- Vercel 项目须关闭 **Git 自动生产部署**（仅 CLI / 本一键脚本）。
+- Vercel 项目须关闭 **Git 自动生产部署**（仅 CLI / 本一键脚本）。当前项目已设 Ignored Build Step = `exit 0`（Git 推送跳过构建；`vercel deploy` CLI 不受影响）。
 - 更轻（跳过 LLM 信号与回测）：`SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 只生成不部署：`SKIP_DEPLOY=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 仅重新部署已有 `docs/data`：`export VERCEL_TOKEN=… && ./scripts/deploy-public-snapshot.sh`（若明显旧于 `web/data/universe.json` 会拒绝，除非 `FORCE_STALE_SNAPSHOT_DEPLOY=1`）
