@@ -134,8 +134,19 @@ export default function BacktestPage() {
       <header className="page-header compact">
         <div>
           <div className="eyebrow">{SITE_EYEBROW}</div>
-          <h1>策略回测</h1>
-          <p>按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，涨停不可买、跌停不可卖（可关闭），与基准指数对比。信号与成交均基于当日收盘价。LLM 打分仅使用截至调仓日的价格动量与主题标签（不含静态基本面，避免 look-ahead）。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。</p>
+          <h1>策略体检</h1>
+          <p>
+            策略体检会消耗较多 LLM 额度，不适合每日运行；建议在股票池或策略逻辑有实质变更后再跑。日常选股与仓位建议请使用
+            {" "}
+            <Link href="/signals">/signals</Link>
+            。
+            按固定周期重配至目标权重（增量调仓，避免重复买卖），计入单边费率与滑点，涨停不可买、跌停不可卖（可关闭），与基准指数对比。信号与成交均基于当日收盘价。LLM 打分仅使用截至调仓日的价格动量与主题标签（不含静态基本面，避免 look-ahead）。任一调仓日信号失败时回测终止，不生成权益曲线；调仓日缺行情的标的跳过交易并按最近收盘价估值，以警告显式列出。
+          </p>
+          <p className="muted">
+            公开页同步（需手动执行，不会自动部署）：
+            {" "}
+            <code>SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh</code>
+          </p>
         </div>
       </header>
 
@@ -187,7 +198,7 @@ export default function BacktestPage() {
           <span>涨跌停限制</span>
         </label>
         <button onClick={run} disabled={loading}>
-          {loading ? "运行中…" : "运行回测"}
+          {loading ? "体检运行中…" : "运行体检"}
         </button>
       </div>
 
