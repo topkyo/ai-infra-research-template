@@ -53,7 +53,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
   cp web/data/holdings.example.json private/holdings.local.json
   ```
 - [ ] 编辑 `private/holdings.local.json`（现金、持仓、成本价）；或在私有台 `/signals` 页面保存。
-- [ ] 阅读 [private/README.md](../private/README.md)：`web-cache` / `pyserver-cache` 由 Docker named volume 持久化；bind mount 需 uid **1001** 可写（`sudo chown -R 1001:1001 web/data private`）。
+- [ ] 阅读 [private/README.md](../private/README.md)：`web-cache` / `pyserver-cache` 由 Docker named volume 持久化；bind mount 需 **Compose uid 1001 与宿主机脚本都能写**（推荐 `chown "$USER":deploy` + `chmod 2775 web/data`，见 OPERATIONS「VPS 一键」权限段；勿只 `chown 1001:1001` 却从宿主机跑刷池）。
 - [ ] （可选）验证非 root：`docker compose run --rm web id` → `uid=1001(app)`。
 
 ## D. Docker Compose
@@ -96,12 +96,13 @@ ssh -L 3000:127.0.0.1:3000 goyun
   3. 重跑：`gh workflow run deploy-public-vercel.yml`（或在 Actions UI 选 **Run workflow**）。
   4. 确认 run 变绿后再验收生产 URL。
 - [ ] 未配置 secrets 时：公开面部署为可选，workflow 会 notice 并跳过，不挡 `ci`；配置 secrets 后 deploy 失败会使 workflow 变红。
-- [ ] 本地或 VPS 生成**首次快照**（需 pyserver + LLM key；本地开发见 [docs/README.md](README.md)）：
+- [ ] 本地或 VPS 生成**首次快照**（需 pyserver + LLM key；本地开发见 [docs/README.md](README.md)）。日常用默认跳过回测：
   ```bash
-  cd web && npx tsx scripts/snapshot.ts
+  cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh
+  # 或本机：cd web && SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
   ```
-- [ ] 提交 `docs/data/` 并 push，或运行 `./scripts/deploy-public-snapshot.sh`（需 `vercel` CLI 与 token/login）。
-- [ ] 打开 Vercel 生产 URL，确认静态页展示股票池/信号/回测 JSON。
+- [ ] 用 `./scripts/deploy-public-snapshot.sh` 部署（需 `VERCEL_TOKEN` 或 `vercel login`），或 `GIT_COMMIT_DOCS=1` 把 `docs/data/` 提交后依赖 Actions。**注意**：任意 `docs/**` 的 `main` push 都会让 Actions 部署仓库内 `docs/data`；若仓库快照旧于 VPS，会盖掉新鲜公开数据——合并文档 PR 后应再跑一次 VPS 一键/CLI 部署。
+- [ ] 打开 Vercel 生产 URL，确认静态页展示股票池/信号/回测 JSON；跳过回测时 meta/UI 应出现「回测沿用至 …」。
 
 ## G. 最终验收
 

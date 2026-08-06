@@ -18,16 +18,20 @@ Web and pyserver containers run as **`app` (uid/gid 1001)**, not root.
 
 | Mount | Host / volume | Container path | Notes |
 |---|---|---|---|
-| Bind | `./web/data` | `/app/data` | Universe refresh writes `universe.json`; host dir must be writable by **uid 1001** |
+| Bind | `./web/data` | `/app/data` | Universe refresh writes `universe.json` from **both** Compose (uid 1001) and host scripts (`vps-refresh` / `refresh-universe.ts`) |
 | Bind | `./private` | `/app/private` | Holdings atomic writes |
 | Named volume | `web-cache` | `/app/.cache` | LLM/backtest SQLite cache |
 | Named volume | `pyserver-cache` | `/app/cache-data` | Market-data SQLite cache (pyserver only) |
 
-Before first `docker compose up`, align bind mount ownership on the host (from repo root):
+Before first `docker compose up`, align bind mount ownership so **uid 1001 and the host SSH user** can write (from repo root). Preferred when the host user is in group `deploy` (gid 1001):
 
 ```bash
-sudo chown -R 1001:1001 web/data private
+sudo chown -R "$USER":deploy web/data private
+sudo chmod 2775 web/data private
+sudo chmod -R g+w web/data private
 ```
+
+Compose-only machines (no host-side universe refresh) may still use `sudo chown -R 1001:1001 web/data private`, but then host `refresh-universe` / VPS one-shot will hit `EACCES` on `universe.json.tmp`.
 
 Named volumes (`web-cache`, `pyserver-cache`) pick up uid 1001 from the image mount points on **first** use. If you upgraded from an older root-owned volume:
 

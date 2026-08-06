@@ -75,6 +75,8 @@ LLM 响应按 prompt + model 哈希缓存到 `web/.cache/web.db`，约 12 小时
 
 **花费档位**（日常 / 研究日 / 策略体检）与 VPS 一键命令见 [docs/OPERATIONS.md](docs/OPERATIONS.md)「静态快照 → 花费档位」。
 
+**私有台每日（研究日，`:3000`）**：首页看盘 → 按需刷新股票池 → `/signals` 持仓信号；不要每日跑全年回测。公开站另用 VPS 一键更新。流程见 [docs/RESEARCH_WORKFLOW.md](docs/RESEARCH_WORKFLOW.md)。
+
 完整变量表和调优建议见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
 
 ## 真实持仓

@@ -150,8 +150,10 @@ LLM 调用按场景分三档，避免日常公开刷新误跑全年回测（数�
 | 档位 | 何时 | 动作 | 相对成本 |
 |---|---|---|---|
 | **日常** | 更新公开页或 VPS 一键 | 刷池 → analyst → signals → **跳过回测** → `meta.json` → 部署；公开页保留既有 `backtest.json` 并在 meta/UI 标注「回测沿用至 …」 | 低 |
-| **研究日** | 私有台日常选股 | `/signals`；按需刷池；**不**默认跑全年回测 | 低 |
+| **研究日** | 私有台日常选股 | 首页看盘 → 按需「DeepSeek 刷新股票池」→ `/signals`（持仓感知）；**不**默认跑全年回测 | 低 |
 | **策略体检** | 策略或股票池有实质变更后 | 私有 `/backtest` UI，或 CLI 带 `SNAPSHOT_INCLUDE_BACKTEST=1` 写回公开回测 | 高（有意为之） |
+
+研究日与公开「日常」一键是两条线：私有台 `:3000` 以 `/signals` 为主；公开站用 VPS 一键刷新 `docs/data`。公开 snapshot 信号**无持仓**；私有 `/signals` **有持仓**。详见 [RESEARCH_WORKFLOW.md](RESEARCH_WORKFLOW.md)。
 
 **默认一键**（刷池 + analyst/signals，跳过回测，公开页沿用旧回测）：
 
@@ -187,7 +189,15 @@ cd ~/github/ai-infra-dashboard
 
 - **必须在宿主机跑 snapshot**，不要用生产 `web` 镜像（镜像里没有 `lib/`，会报 `Cannot find module '/app/lib/universe'`）。
 - 脚本会从根目录 `.env` 生成 `web/.env.local`，并强制 `PYSERVER_URL=http://127.0.0.1:8001`。
-- 部署读取 `~/scripts/.vercel-token`（或环境变量 `VERCEL_TOKEN`）。
+- 部署读取 `~/scripts/.vercel-token`（或环境变量 `VERCEL_TOKEN`）。单独跑 `./scripts/deploy-public-snapshot.sh` 时也要先 `export VERCEL_TOKEN=…`，否则会报未登录并**不会**部署。
+- **`web/data` 权限**：一键会在宿主机写 `universe.json`。若目录仅 `1001:1001` 且 mode `755`，宿主机用户会 `EACCES`（`.tmp` 写失败）。推荐宿主机用户加入 `deploy`（gid 1001）组，并：
+  ```bash
+  sudo chown -R "$USER":deploy web/data
+  sudo chmod 2775 web/data
+  sudo chmod g+w web/data/*
+  ```
+  这样 Compose（uid 1001）与宿主机脚本都能写。勿长期只用 `chown 1001:1001` 却从宿主机跑 `refresh-universe`。
+- **勿被 Actions 旧快照盖掉**：`push` 到 `main` 且路径命中 `docs/**` 时，[`deploy-public-vercel`](../.github/workflows/deploy-public-vercel.yml) 会部署**仓库里的** `docs/`（含可能过期的 `docs/data/*`），覆盖先前 CLI/VPS 部署的新鲜快照。合并仅改 `docs/*.md` / `docs/app.js` 后，应立刻再跑 VPS 一键或 `./scripts/deploy-public-snapshot.sh`，或把最新 `docs/data` 提交进仓库后再依赖 Actions。
 - 更轻（跳过 LLM 信号与回测）：`SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 只生成不部署：`SKIP_DEPLOY=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 生成后顺带 commit/push：`GIT_COMMIT_DOCS=1 ./scripts/vps-refresh-public-snapshot.sh`
@@ -236,6 +246,9 @@ python3 -m http.server 8765 --directory docs
 | 信号超时 | 减小 `SIGNALS_LLM_SCORE_BATCH_SIZE`，增大 `SIGNALS_LLM_TIMEOUT_MS`，查看 Web 日志。 |
 | 信号返回 LLM `503` / 超时 | 传输层会自动重试；仍失败时减小 `SIGNALS_LLM_SCORE_BATCH_SIZE`，确认 `LLM_PROVIDER=deepseek` 与 `DEEPSEEK_API_KEY`，或临时改用 `opencode-go`。 |
 | 回测超时 | 缩短日期区间，降低 `BACKTEST_SIGNAL_CONCURRENCY` 或减小 `BACKTEST_LLM_SCORE_BATCH_SIZE`。 |
+| `EACCES` 写 `web/data/universe.json.tmp` | 宿主机无写权限；按上文「狗云 VPS 一键」权限段设置 `chown`/`chmod 2775`。 |
+| DeepSeek `402 Insufficient Balance` | 充值后再跑；日常一键已跳过回测，余额主要耗在刷池 + 信号（或误开 `SNAPSHOT_INCLUDE_BACKTEST=1`）。 |
+| 合并 PR 后公开页数据突然变旧 | `docs/**` 触发 Actions 部署了仓库内旧 `docs/data`；用 VPS 一键或 CLI 重新部署宿主机上的新鲜快照。 |
 | Tushare 权限错误 | 默认关闭 Tushare 次级源；确需启用时参考 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。 |
 | 同一工作区构建异常 | 避免同时运行 `npm run dev` 和 `npm run build`。 |
 
