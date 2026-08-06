@@ -16,11 +16,11 @@ test("home renders the universe table and loads mock prices", async ({ page }) =
 
 test("backtest page renders the full parameter form", async ({ page }) => {
   await page.goto("/backtest");
-  await expect(page.getByRole("heading", { name: "策略回测" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "策略体检" })).toBeVisible();
   for (const label of ["起始", "结束", "调仓周期", "最大持仓数", "初始资金", "费率(bps)", "滑点(bps)", "基准指数", "涨跌停限制"]) {
     await expect(page.getByText(label).first()).toBeVisible();
   }
-  await expect(page.getByRole("button", { name: "运行回测" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "运行体检" })).toBeEnabled();
 });
 
 test("signals page surfaces setup_required when holdings are missing", async ({ page }) => {
