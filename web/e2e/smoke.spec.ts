@@ -7,6 +7,10 @@ import { test, expect } from "@playwright/test";
 test("home renders the universe table and loads mock prices", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "topkyo · AI 基建研究台" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "公开快照" })).toHaveAttribute(
+    "href",
+    "https://ai-infra-dashboard-docs.vercel.app",
+  );
   // Universe table renders grouped theme panels with stock codes.
   await expect(page.getByRole("columnheader", { name: "代码" }).first()).toBeVisible();
   await expect(page.getByText("688256").first()).toBeVisible();

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { readUniverse } from "@/lib/universe";
-import { SITE_EYEBROW, SITE_HERO, SITE_NAME } from "@/lib/site";
+import { SITE_EYEBROW, SITE_HERO, SITE_NAME, SITE_PUBLIC_SNAPSHOT_URL } from "@/lib/site";
 import RefreshUniverseButton from "./RefreshUniverseButton";
 import UniverseTable from "./UniverseTable";
 
@@ -22,7 +22,15 @@ export default function Home() {
         </div>
         <div className="header-actions">
           <Link href="/signals" className="button secondary">实时信号</Link>
-          <Link href="/backtest" className="button secondary">策略回测</Link>
+          <Link href="/backtest" className="button secondary">策略体检</Link>
+          <a
+            href={SITE_PUBLIC_SNAPSHOT_URL}
+            className="button secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            公开快照
+          </a>
         </div>
       </header>
 
