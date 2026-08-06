@@ -248,7 +248,7 @@ python3 -m http.server 8765 --directory docs
 | 回测超时 | 缩短日期区间，降低 `BACKTEST_SIGNAL_CONCURRENCY` 或减小 `BACKTEST_LLM_SCORE_BATCH_SIZE`。 |
 | `EACCES` 写 `web/data/universe.json.tmp` | 宿主机无写权限；按上文「狗云 VPS 一键」权限段设置 `chown`/`chmod 2775`。 |
 | 私有台 `:3000` HTTP 500 / `EACCES` 读 `universe.json` | 宿主机刷池后文件常成 `0600`，Compose（uid 1001）读不了；`chmod 664 web/data/universe.json` 后 `docker compose restart web`。一键脚本在刷池后会尝试 `chmod 664`。 |
-| 公开页「信号输入警告」很多条 | 多为可审计提示：基本面里的 `latest_close` 来自 AkShare 日线收盘、**非实时**；不是信号失败。全池各一条属预期。 |
+| 公开页「信号输入警告」很多条 | 主路径 `latest_close` 以 `field_sources=akshare_stock_value_em` 审计，**不再**逐票写入 warnings。公开页对重复文案折叠为「N 只：…」。真降级（实时不可用→日线等）仍报警告。旧 snapshot 若仍含 117 条同文案，靠 UI 折叠消噪；重新一键刷新后源头即干净。 |
 | DeepSeek `402 Insufficient Balance` | 充值后再跑；日常一键已跳过回测，余额主要耗在刷池 + 信号（或误开 `SNAPSHOT_INCLUDE_BACKTEST=1`）。 |
 | 合并 PR 后公开页数据突然变旧 | `docs/**` 触发 Actions 部署了仓库内旧 `docs/data`；用 VPS 一键或 CLI 重新部署宿主机上的新鲜快照。 |
 | Tushare 权限错误 | 默认关闭 Tushare 次级源；确需启用时参考 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。 |
