@@ -197,10 +197,11 @@ cd ~/github/ai-infra-dashboard
   sudo chmod g+w web/data/*
   ```
   这样 Compose（uid 1001）与宿主机脚本都能写。勿长期只用 `chown 1001:1001` 却从宿主机跑 `refresh-universe`。
-- **勿被 Actions 旧快照盖掉**：`push` 到 `main` 且路径命中 `docs/**` 时，[`deploy-public-vercel`](../.github/workflows/deploy-public-vercel.yml) 会部署**仓库里的** `docs/`（含可能过期的 `docs/data/*`），覆盖先前 CLI/VPS 部署的新鲜快照。合并仅改 `docs/*.md` / `docs/app.js` 后，应立刻再跑 VPS 一键或 `./scripts/deploy-public-snapshot.sh`，或把最新 `docs/data` 提交进仓库后再依赖 Actions。
+- **公开快照只认 VPS CLI**：`docs/data/*.json` 已 gitignore，不进仓库；GitHub Actions **不会**再部署公开数据。合并 `docs/*.md` 不会盖掉 Vercel。见 [specs/2026-08-06-public-snapshot-source-of-truth.md](specs/2026-08-06-public-snapshot-source-of-truth.md)。
+- Vercel 项目须关闭 **Git 自动生产部署**（仅 CLI / 本一键脚本）。
 - 更轻（跳过 LLM 信号与回测）：`SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 只生成不部署：`SKIP_DEPLOY=1 ./scripts/vps-refresh-public-snapshot.sh`
-- 生成后顺带 commit/push：`GIT_COMMIT_DOCS=1 ./scripts/vps-refresh-public-snapshot.sh`
+- 仅重新部署已有 `docs/data`：`export VERCEL_TOKEN=… && ./scripts/deploy-public-snapshot.sh`（若明显旧于 `web/data/universe.json` 会拒绝，除非 `FORCE_STALE_SNAPSHOT_DEPLOY=1`）
 
 公开站：https://ai-infra-dashboard-docs.vercel.app
 
@@ -251,7 +252,7 @@ python3 -m http.server 8765 --directory docs
 | 公开页「信号输入警告」很多条 | 主路径 `latest_close` 以 `field_sources=akshare_stock_value_em` 审计，**不再**逐票写入 warnings。公开页对重复文案折叠为「N 只：…」。真降级（实时不可用→日线等）仍报警告。旧 snapshot 若仍含大量同文案，靠 UI 折叠消噪；重新一键刷新后源头即干净。 |
 | 改 pyserver 警告语义后仍见旧「非实时」警告 | 基本面缓存在 pyserver SQLite 的 `live:fund:*`（不是裸 `fund:`）。在 VPS 清掉对应 key 或整库相关条目后，再跑一键快照；勿只重启容器指望过期。 |
 | DeepSeek `402 Insufficient Balance` | 充值后再跑；日常一键已跳过回测，余额主要耗在刷池 + 信号（或误开 `SNAPSHOT_INCLUDE_BACKTEST=1`）。 |
-| 合并 PR 后公开页数据突然变旧 | `docs/**` 触发 Actions 部署了仓库内旧 `docs/data`；用 VPS 一键或 CLI 重新部署宿主机上的新鲜快照。 |
+| 公开页数据突然变旧 | 确认 Vercel 未开启 Git 自动生产部署；用 VPS 一键或 `./scripts/deploy-public-snapshot.sh` 从宿主机 `docs/data` 部署。`docs/data/*.json` 不应再出现在 git 提交里。 |
 | Tushare 权限错误 | 默认关闭 Tushare 次级源；确需启用时参考 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。 |
 | 同一工作区构建异常 | 避免同时运行 `npm run dev` 和 `npm run build`。 |
 

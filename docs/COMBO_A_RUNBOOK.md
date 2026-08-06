@@ -82,27 +82,20 @@ ssh -L 3000:127.0.0.1:3000 goyun
 
 ## F. Vercel 公开面
 
-- [ ] 在 [Vercel](https://vercel.com) 新建项目，导入本 GitHub 仓库。
+- [ ] 在 [Vercel](https://vercel.com) 新建项目（可关联本仓库仅作项目壳，**数据不走 git**）。
 - [ ] **Root Directory** = `docs`
 - [ ] **Framework Preset** = Other（无 build command）
-- [ ] 可选：配置 GitHub Actions secrets（`VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`）以启用 [.github/workflows/deploy-public-vercel.yml](../.github/workflows/deploy-public-vercel.yml)。
-- [ ] **确认最近一次公开快照部署成功**（secrets 已配置时）：
-  1. GitHub → Actions → **deploy-public-vercel** → 最近一次 run 为绿色，且 **Deploy static docs snapshot to Vercel** 步骤成功。
-  2. Vercel 项目 → **Deployments** → 最新 **Production** 部署时间与上述 run 一致；打开生产 URL 核对 `docs/data/` 内容。
-  3. 未配置 secrets 时 workflow 会 `notice` 跳过部署，属预期，不代表线上已更新。
-- [ ] **Token 轮换与重跑**（Actions 出现 `token … is not valid` 或 deploy 步骤失败、workflow 变红）：
-  1. Vercel → Account Settings → **Tokens** → 新建 token（项目级 `vcp_…` 亦可）。
-  2. `gh secret set VERCEL_TOKEN` 粘贴新值；`VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` 一般无需改。
-  3. 重跑：`gh workflow run deploy-public-vercel.yml`（或在 Actions UI 选 **Run workflow**）。
-  4. 确认 run 变绿后再验收生产 URL。
-- [ ] 未配置 secrets 时：公开面部署为可选，workflow 会 notice 并跳过，不挡 `ci`；配置 secrets 后 deploy 失败会使 workflow 变红。
-- [ ] 本地或 VPS 生成**首次快照**（需 pyserver + LLM key；本地开发见 [docs/README.md](README.md)）。日常用默认跳过回测：
+- [ ] **关闭 Git 自动生产部署**（Project → Settings → Git → 关闭 Production Auto-deploy，或 Ignored Build Step 恒跳过）。公开面只认 VPS CLI。
+- [ ] 在 VPS 配置 `~/scripts/.vercel-token`（或 `VERCEL_TOKEN`），安装 `vercel` CLI。
+- [ ] 本地或 VPS 生成**首次快照**并部署（需 pyserver + LLM key；见 [docs/README.md](README.md)）：
   ```bash
   cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh
-  # 或本机：cd web && SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
+  # 或：生成后单独 deploy
+  # export VERCEL_TOKEN=… && ./scripts/deploy-public-snapshot.sh
   ```
-- [ ] 用 `./scripts/deploy-public-snapshot.sh` 部署（需 `VERCEL_TOKEN` 或 `vercel login`），或 `GIT_COMMIT_DOCS=1` 把 `docs/data/` 提交后依赖 Actions。**注意**：任意 `docs/**` 的 `main` push 都会让 Actions 部署仓库内 `docs/data`；若仓库快照旧于 VPS，会盖掉新鲜公开数据——合并文档 PR 后应再跑一次 VPS 一键/CLI 部署。
 - [ ] 打开 Vercel 生产 URL，确认静态页展示股票池/信号/回测 JSON；跳过回测时 meta/UI 应出现「回测沿用至 …」。
+- [ ] **Token 轮换**：Vercel → Tokens 新建后写入 `~/scripts/.vercel-token`，再跑一键或 `deploy-public-snapshot.sh`。不要用 GitHub Actions 部署快照（workflow 会直接失败并提示 CLI）。
+
 
 ## G. 最终验收
 

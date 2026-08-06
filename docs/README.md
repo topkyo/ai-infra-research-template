@@ -4,14 +4,17 @@
 
 **线上（Vercel）：** <https://ai-infra-dashboard-docs.vercel.app>
 
-项目：`ai-infra-dashboard-docs`（Root Directory = `docs`，Framework = Other，无构建）。本地已登录 CLI 时可：
+`docs/data/*.json` **不进 git**（见 [data/README.md](data/README.md)）。生产部署只走 VPS/本机 CLI；关闭 Vercel Git 自动生产部署。
+
+项目：`ai-infra-dashboard-docs`（Root Directory = `docs`，Framework = Other，无构建）：
 
 ```bash
+./scripts/vps-refresh-public-snapshot.sh          # 推荐：生成 + 部署
+# 或已有 docs/data 时：
 ./scripts/deploy-public-snapshot.sh
-# 或：vercel deploy --prod --yes --cwd docs
 ```
 
-**备选：** GitHub Pages（需在仓库 Settings 启用 Pages）仍可托管同一份静态文件。
+**备选：** GitHub Pages 可托管同一静态壳，但数据文件仍须自行同步到 Pages 源，不推荐与 Combo A 混用。
 
 ## 内容
 
@@ -47,7 +50,7 @@ cd web
 SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
 ```
 
-刷新后提交并部署 `docs/data/` 即可更新公开快照（Vercel Git 集成会自动部署，或通过 Vercel CLI / Dashboard 手动触发；GitHub Pages 则 push 到默认分支即可）。
+刷新后在仓库根执行 `./scripts/deploy-public-snapshot.sh`（需 `VERCEL_TOKEN`）。不要把 `docs/data/*.json` 提交进 git。
 
 ## 预览
 

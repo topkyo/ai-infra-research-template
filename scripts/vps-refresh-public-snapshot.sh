@@ -16,7 +16,9 @@
 #   SNAPSHOT_BACKTEST_START / SNAPSHOT_BACKTEST_END
 #   VERCEL_TOKEN_FILE=~/scripts/.vercel-token          # default
 #   SKIP_DEPLOY=1                                      # only regenerate docs/data
-#   GIT_COMMIT_DOCS=1                                  # also commit+push docs/data
+#   FORCE_STALE_SNAPSHOT_DEPLOY=1                      # pass-through to deploy guard
+#
+# Snapshot JSON is gitignored — do not commit docs/data/*.json.
 #
 # Prerequisites:
 #   - docker compose stack healthy (pyserver on 127.0.0.1:8001)
@@ -149,16 +151,11 @@ else
   echo "[vps-snapshot] public URL: https://ai-infra-dashboard-docs.vercel.app"
 fi
 
-# --- 8) optional git commit (keeps GitHub + Actions in sync) ---
+# --- 8) docs/data is gitignored (CLI-only public plane) ---
 if [[ "${GIT_COMMIT_DOCS:-}" == "1" ]]; then
-  git add docs/data
-  if git diff --cached --quiet; then
-    echo "[vps-snapshot] no docs/data changes to commit"
-  else
-    git commit -m "chore: refresh public snapshot"
-    git push origin HEAD
-    echo "[vps-snapshot] pushed docs/data (Actions may also redeploy)"
-  fi
+  echo "[vps-snapshot] error: GIT_COMMIT_DOCS is retired — docs/data/*.json are gitignored" >&2
+  echo "[vps-snapshot] deploy with this script or ./scripts/deploy-public-snapshot.sh only" >&2
+  exit 1
 fi
 
 echo "[vps-snapshot] done"

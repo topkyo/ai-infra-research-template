@@ -1,27 +1,14 @@
-# Optional: deploy the public docs/ snapshot to Vercel (Combo A public plane).
+# Public snapshot is NOT deployed from git.
+# Combo A source of truth: VPS host docs/data/*.json via
+#   ./scripts/vps-refresh-public-snapshot.sh
+#   ./scripts/deploy-public-snapshot.sh
 #
-# Operator prerequisites (GitHub repo Settings → Secrets and variables → Actions):
-#   VERCEL_TOKEN      — Vercel token (Account or project-scoped vcp_… both OK)
-#   VERCEL_ORG_ID     — Team or personal ID from the Vercel project settings
-#   VERCEL_PROJECT_ID — Project ID from the Vercel project settings
-#
-# Vercel project setup:
-#   - Import this repository as a new project.
-#   - Root Directory = docs  (NOT web/ — do not deploy the Next.js app)
-#   - Framework Preset = Other (static site; no build command)
-#
-# Uses `vercel deploy` directly (not amondnet/vercel-action): project-scoped
-# tokens return 404 on /v2/user, which breaks whoami-based actions.
-# If secrets are missing, the workflow notices and succeeds (optional deploy).
-# If secrets are configured and deploy fails, the workflow fails (exit 1).
+# This workflow only exists so old bookmarks / "Re-run workflow" show a clear error
+# instead of silently publishing an empty or stale tree after docs/data was untracked.
 
 name: deploy-public-vercel
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
   workflow_dispatch:
 
 concurrency:
@@ -29,42 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Deploy docs/ snapshot to Vercel
+  remind:
+    name: Refuse git-based public deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Check Vercel secrets
-        id: secrets
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      - name: Point operators at VPS CLI
         run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Vercel deploy skipped::Configure VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID in repository secrets. Create a Vercel project with Root Directory=docs (static snapshot only; not web/)."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Deploy static docs snapshot to Vercel
-        id: deploy
-        if: steps.secrets.outputs.configured == 'true'
-        continue-on-error: true
-        working-directory: ./docs
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-          mkdir -p .vercel
-          printf '%s\n' "{\"projectId\":\"${VERCEL_PROJECT_ID}\",\"orgId\":\"${VERCEL_ORG_ID}\"}" > .vercel/project.json
-          npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN"
-
-      - name: Fail workflow when configured deploy failed
-        if: steps.secrets.outputs.configured == 'true' && steps.deploy.outcome != 'success'
-        run: |
-          echo "::error title=Vercel deploy failed::Public snapshot deploy failed. Rotate token if needed (Vercel → Tokens), then: gh secret set VERCEL_TOKEN. Re-run: gh workflow run deploy-public-vercel.yml. Project-scoped vcp_ tokens are supported by this workflow."
+          echo "::error title=Public snapshot is CLI-only::Do not deploy docs/ from GitHub Actions. On the VPS: ./scripts/vps-refresh-public-snapshot.sh (or SNAPSHOT_SKIP_* + ./scripts/deploy-public-snapshot.sh). Snapshot JSON is gitignored; see docs/specs/2026-08-06-public-snapshot-source-of-truth.md"
           exit 1

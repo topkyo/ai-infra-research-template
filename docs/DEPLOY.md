@@ -196,23 +196,25 @@ API key 只放在容器环境变量中，不会写入前端 bundle。
 |---|---|
 | [docs/vercel.json](vercel.json) | Vercel 静态站点配置（`cleanUrls` 等） |
 | [docs/README.md](README.md) | 快照内容与刷新说明 |
-| [scripts/deploy-public-snapshot.sh](../scripts/deploy-public-snapshot.sh) | CLI 部署 helper（需 `vercel` + `VERCEL_TOKEN` 或已 login） |
-| [.github/workflows/deploy-public-vercel.yml](../.github/workflows/deploy-public-vercel.yml) | 可选 CI：`docs/**` 变更或 `workflow_dispatch` 时部署 |
+| [scripts/deploy-public-snapshot.sh](../scripts/deploy-public-snapshot.sh) | **唯一**推荐的生产部署入口（需 `vercel` + `VERCEL_TOKEN`） |
+| [docs/data/README.md](data/README.md) | 快照 JSON 不进 git；由一键/snapshot 生成 |
+| [specs/2026-08-06-public-snapshot-source-of-truth.md](specs/2026-08-06-public-snapshot-source-of-truth.md) | 公开面 source of truth |
 
 Vercel 项目设置：
 
 - **Root Directory** = `docs`
 - **Framework Preset** = Other（无构建步骤）
+- **关闭 Git 自动生产部署**（避免空树/旧树盖掉 CLI 部署）
 
-生成并发布首次快照：
+生成并发布首次快照（**不要** `git add docs/data/`）：
 
 ```bash
-cd web
-npx tsx scripts/snapshot.ts
-cd ..
-git add docs/data/
-git commit -m "chore: refresh public snapshot"
-# 推送后 Vercel Git 集成自动部署，或：
+# 推荐 VPS 一键（生成 + 部署）
+./scripts/vps-refresh-public-snapshot.sh
+
+# 或分步
+cd web && SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts && cd ..
+export VERCEL_TOKEN=…   # 或 ~/scripts/.vercel-token 由一键脚本读取
 ./scripts/deploy-public-snapshot.sh
 ```
 
@@ -228,7 +230,7 @@ git commit -m "chore: refresh public snapshot"
 | 回测失败 / 超时 | 缩短日期范围；检查 `LLM_MODEL_BACKTEST`、`BACKTEST_LLM_TIMEOUT_MS`、`BACKTEST_LLM_SCORE_BATCH_SIZE`、`BACKTEST_SIGNAL_CONCURRENCY`。 |
 | 股票池刷新超时 | 增大 `UNIVERSE_REFRESH_LLM_TIMEOUT_MS`，确认模型支持长上下文和长时间 JSON 输出。 |
 | Tushare 权限错误 | 关闭 `MARKET_ENABLE_TUSHARE_SECONDARY` 或确认 token 权限、积分、频次。 |
-| 静态页数据旧 | 重新运行 `web/scripts/snapshot.ts`，提交 `docs/data/` 并触发 Vercel 部署。 |
+| 静态页数据旧 | 在 VPS 跑一键或 `snapshot.ts` 后执行 `./scripts/deploy-public-snapshot.sh`（勿依赖 git/Actions）。 |
 | 外网可访问 8001 | 检查 `docker-compose.yml` 端口是否为 `127.0.0.1:8001`；确认防火墙与 Caddy 未反代 8001。 |
 | Compose 启动失败（web） | 确认 `private/holdings.local.json` 已存在（见 [private/README.md](../private/README.md)）。 |
 | 磁盘使用率 ≥85% 告警 | 多为 Docker build cache / 旧镜像（`/var/lib/containerd`）。跑 `~/scripts/docker-disk-prune.sh`；确认 weekly cron（见 Runbook §H）。勿 `prune --volumes`。 |

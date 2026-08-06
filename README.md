@@ -15,7 +15,7 @@
 | 行情与一致预期 | FastAPI sidecar 聚合现价、估值、成长、评级和隐含目标参考。 |
 | 组合持仓信号 | 结合真实或模拟持仓生成 5-20 个交易日目标仓位；失败时显式不可用，不合成伪结论。 |
 | 严格回测 | 按调仓周期增量重配（避免重复买卖），支持基准指数、单边费率与滑点、涨跌停封板限制（T+1 结构性满足）、信号缓存和结果存档。信号生成与成交均使用**当日收盘价**（close-to-close），不建模盘中路径；对动量类策略可能略偏乐观。**LLM 打分仅使用截至调仓日的价格动量与主题标签**，静态 PE/PB/利润增速等基本面未纳入（无 point-in-time 历史基本面，避免 look-ahead）。 |
-| 静态快照 | 输出 `docs/data/*.json`，用于 Vercel（或 Pages）公开展示最近一次研究快照。 |
+| 静态快照 | 输出 `docs/data/*.json`（gitignore，VPS CLI 部署到 Vercel），公开展示最近一次研究快照。 |
 
 ## 产品界面
 
@@ -158,4 +158,4 @@ npm run dev
 - 不提交 `web/data/holdings.local.json`；它可能包含真实持仓、成本和现金信息。
 - LLM key 只放在 `web/.env.local` 或部署环境变量。
 - Tushare token 只放在 `pyserver/.env` 或部署环境变量。
-- `docs/data/*.json` 是公开静态快照，包含研究输出，只适合作为可公开研究记录。
+- `docs/data/*.json` 是公开静态快照（不进 git），包含研究输出；只通过 VPS CLI 部署，勿当私有持仓备份。

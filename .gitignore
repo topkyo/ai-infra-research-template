@@ -45,3 +45,7 @@ scripts/agentstack-*
 # Playwright e2e artifacts
 web/test-results/
 web/playwright-report/
+
+# Public snapshot JSON — generated on VPS/laptop; deploy via CLI only (not git/Actions)
+docs/data/*.json
+docs/.vercel/
