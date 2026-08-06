@@ -2,10 +2,17 @@
 # One-shot: refresh docs/data on the VPS host, then deploy the public snapshot.
 #
 # Usage (on goyun, from repo root):
+#   # 日常（默认：刷池 + 信号，跳过回测）
 #   ./scripts/vps-refresh-public-snapshot.sh
 #
+#   # 体检并更新公开回测
+#   SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh
+#
+#   # 跳过刷池
+#   SNAPSHOT_SKIP_UNIVERSE_REFRESH=1 ./scripts/vps-refresh-public-snapshot.sh
+#
 # Optional env:
-#   SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1   # light refresh
+#   SNAPSHOT_SKIP_SIGNALS=1                            # light refresh (skip signals)
 #   SNAPSHOT_BACKTEST_START / SNAPSHOT_BACKTEST_END
 #   VERCEL_TOKEN_FILE=~/scripts/.vercel-token          # default
 #   SKIP_DEPLOY=1                                      # only regenerate docs/data
@@ -70,7 +77,29 @@ export SIGNALS_LOAD_CONCURRENCY="${SIGNALS_LOAD_CONCURRENCY:-2}"
 export SIGNALS_LLM_SCORE_BATCH_SIZE="${SIGNALS_LLM_SCORE_BATCH_SIZE:-5}"
 export BACKTEST_LLM_SCORE_BATCH_SIZE="${BACKTEST_LLM_SCORE_BATCH_SIZE:-5}"
 
-# --- 4) generate docs/data ---
+# --- 4) universe refresh (default on) ---
+if [[ "${SNAPSHOT_SKIP_UNIVERSE_REFRESH:-}" == "1" ]]; then
+  export SNAPSHOT_STEP_UNIVERSE_REFRESH=0
+  echo "[vps-snapshot] SNAPSHOT_SKIP_UNIVERSE_REFRESH=1 — skipping universe refresh"
+else
+  echo "[vps-snapshot] running web/scripts/refresh-universe.ts…"
+  if ! ( cd web && npx tsx scripts/refresh-universe.ts ); then
+    echo "[vps-snapshot] error: universe refresh failed" >&2
+    exit 1
+  fi
+  export SNAPSHOT_STEP_UNIVERSE_REFRESH=1
+  echo "[vps-snapshot] universe refresh ok"
+fi
+
+# --- 5) backtest default skip ---
+if [[ "${SNAPSHOT_INCLUDE_BACKTEST:-}" == "1" ]]; then
+  unset SNAPSHOT_SKIP_BACKTEST 2>/dev/null || true
+  echo "[vps-snapshot] SNAPSHOT_INCLUDE_BACKTEST=1 — running backtest in snapshot"
+else
+  export SNAPSHOT_SKIP_BACKTEST=1
+fi
+
+# --- 6) generate docs/data ---
 echo "[vps-snapshot] running web/scripts/snapshot.ts (log: $LOG)…"
 set +e
 ( cd web && npx tsx scripts/snapshot.ts ) 2>&1 | tee "$LOG"
@@ -88,7 +117,7 @@ meta = json.loads(Path("docs/data/meta.json").read_text())
 print(f"[vps-snapshot] meta.generated_at={meta.get('generated_at')} universe_count={meta.get('universe_count')}")
 PY
 
-# --- 5) deploy public plane ---
+# --- 7) deploy public plane ---
 if [[ "${SKIP_DEPLOY:-}" == "1" ]]; then
   echo "[vps-snapshot] SKIP_DEPLOY=1 — not deploying"
 else
@@ -118,7 +147,7 @@ else
   echo "[vps-snapshot] public URL: https://ai-infra-dashboard-docs.vercel.app"
 fi
 
-# --- 6) optional git commit (keeps GitHub + Actions in sync) ---
+# --- 8) optional git commit (keeps GitHub + Actions in sync) ---
 if [[ "${GIT_COMMIT_DOCS:-}" == "1" ]]; then
   git add docs/data
   if git diff --cached --quiet; then
