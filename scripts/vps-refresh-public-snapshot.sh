@@ -88,6 +88,8 @@ else
     exit 1
   fi
   export SNAPSHOT_STEP_UNIVERSE_REFRESH=1
+  # Host umask may leave universe.json as 0600; Compose web (uid 1001) must read it.
+  chmod 664 web/data/universe.json 2>/dev/null || true
   echo "[vps-snapshot] universe refresh ok"
 fi
 
