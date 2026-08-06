@@ -143,9 +143,40 @@ OpenCode Go / DeepSeek 对大股票池同步 JSON 生成延迟较高。信号与
 
 ## 静态快照
 
+### 花费档位
+
+LLM 调用按场景分三档，避免日常公开刷新误跑全年回测（数百批 LLM）。完整变量见上文「LLM 调优变量」。
+
+| 档位 | 何时 | 动作 | 相对成本 |
+|---|---|---|---|
+| **日常** | 更新公开页或 VPS 一键 | 刷池 → analyst → signals → **跳过回测** → `meta.json` → 部署；公开页保留既有 `backtest.json` 并在 meta/UI 标注「回测沿用至 …」 | 低 |
+| **研究日** | 私有台日常选股 | `/signals`；按需刷池；**不**默认跑全年回测 | 低 |
+| **策略体检** | 策略或股票池有实质变更后 | 私有 `/backtest` UI，或 CLI 带 `SNAPSHOT_INCLUDE_BACKTEST=1` 写回公开回测 | 高（有意为之） |
+
+**默认一键**（刷池 + analyst/signals，跳过回测，公开页沿用旧回测）：
+
+```bash
+cd ~/github/ai-infra-dashboard
+./scripts/vps-refresh-public-snapshot.sh
+```
+
+**策略体检并更新公开回测**（全链路含回测，成功才覆盖 `docs/data/backtest.json`）：
+
+```bash
+SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh
+```
+
+**跳过刷池**（仅重跑 analyst/signals 与部署，股票池不变）：
+
+```bash
+SNAPSHOT_SKIP_UNIVERSE_REFRESH=1 ./scripts/vps-refresh-public-snapshot.sh
+```
+
+私有研究台体检入口：<http://localhost:3000/backtest>（或 VPS SSH 隧道后的私有 URL）。该页**不会**自动部署 Vercel；若公开页也需新回测，再用上一条 `SNAPSHOT_INCLUDE_BACKTEST=1` 命令。
+
 ### 狗云 VPS 一键（推荐）
 
-在 VPS 仓库根目录执行（compose 健康 + 宿主机跑 `snapshot.ts` + Vercel 部署）：
+在 VPS 仓库根目录执行（compose 健康 + 宿主机刷池/`snapshot.ts` + Vercel 部署）。**默认即日常档**：刷池 + analyst/signals，跳过回测。
 
 ```bash
 cd ~/github/ai-infra-dashboard
@@ -157,7 +188,7 @@ cd ~/github/ai-infra-dashboard
 - **必须在宿主机跑 snapshot**，不要用生产 `web` 镜像（镜像里没有 `lib/`，会报 `Cannot find module '/app/lib/universe'`）。
 - 脚本会从根目录 `.env` 生成 `web/.env.local`，并强制 `PYSERVER_URL=http://127.0.0.1:8001`。
 - 部署读取 `~/scripts/.vercel-token`（或环境变量 `VERCEL_TOKEN`）。
-- 轻量刷新：`SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh`
+- 更轻（跳过 LLM 信号与回测）：`SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 只生成不部署：`SKIP_DEPLOY=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 生成后顺带 commit/push：`GIT_COMMIT_DOCS=1 ./scripts/vps-refresh-public-snapshot.sh`
 
@@ -173,10 +204,20 @@ cd web && npx tsx scripts/snapshot.ts
 cd .. && ./scripts/deploy-public-snapshot.sh   # 必须在仓库根目录
 ```
 
-常用覆盖项：
+常用覆盖项（档位说明见上文「花费档位」）：
 
 ```bash
+# 日常：跳过回测（默认 VPS 一键行为）
+SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
+
+# 策略体检：含回测
+unset SNAPSHOT_SKIP_BACKTEST
+npx tsx scripts/snapshot.ts
+
+# 更轻：跳过信号与回测
 SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
+
+# 自定义回测区间
 SNAPSHOT_BACKTEST_START=2024-01-01 SNAPSHOT_BACKTEST_END=2026-05-14 npx tsx scripts/snapshot.ts
 ```
 

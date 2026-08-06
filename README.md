@@ -68,9 +68,12 @@ scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 | 实时信号 | `/api/signals` | POST `mode=real|paper`；真实模式读取本地持仓，LLM 对全池输出目标仓位；按 `SIGNALS_LLM_SCORE_BATCH_SIZE` 串行分批；模型 `LLM_MODEL`；route `maxDuration = 3600`。 |
 | 回测 | `/api/backtest` | 每个调仓日对全池打分；`BACKTEST_SIGNAL_CONCURRENCY` 并行调仓日，日内按 `BACKTEST_LLM_SCORE_BATCH_SIZE` 串行分批；route `maxDuration = 3600`。调仓日信号与成交均按**当日收盘价**执行（含首个调仓日），日频 close-to-close，不建模盘中路径；对动量策略可能略偏乐观。**打分输入不含静态基本面**（仅价格动量 + 主题），避免 look-ahead；结果 `warnings` 含中英文说明。 |
 | 股票池刷新 | `/api/universe/refresh` | 单次 LLM 审阅整池并提出增删改；`UNIVERSE_REFRESH_LLM_TIMEOUT_MS` 控制提议阶段；route `maxDuration = 900`。 |
-| 静态快照 | `web/scripts/snapshot.ts` | 生成股票池、分析师、信号和回测 JSON；可用 `SNAPSHOT_SKIP_SIGNALS=1` / `SNAPSHOT_SKIP_BACKTEST=1` 跳过重任务。 |
+| 静态快照 | `web/scripts/snapshot.ts` | 生成股票池、分析师、信号和回测 JSON。**日常公开刷新默认跳过回测**，保留既有 `backtest.json` 并在 meta 标注沿用；策略体检见私有 `/backtest` 或 `SNAPSHOT_INCLUDE_BACKTEST=1`。 |
+| 策略体检 | `/backtest` | 全年回测 LLM 消耗高，非每日任务；股票池或策略逻辑有实质变更后再跑。公开页需更新回测时用 `SNAPSHOT_INCLUDE_BACKTEST=1`。 |
 
 LLM 响应按 prompt + model 哈希缓存到 `web/.cache/web.db`，约 12 小时。同参数重复跑信号或回测会复用缓存，但缓存命中不改变严格校验规则。
+
+**花费档位**（日常 / 研究日 / 策略体检）与 VPS 一键命令见 [docs/OPERATIONS.md](docs/OPERATIONS.md)「静态快照 → 花费档位」。
 
 完整变量表和调优建议见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
 
@@ -126,7 +129,9 @@ npm run dev
 | pyserver 单元测试 | `cd pyserver && uv run python -m unittest discover -p "test_*.py"` |
 | 生产构建 | `cd web && npm run build` |
 | 刷新股票池 | `cd web && npx tsx scripts/refresh-universe.ts` |
-| 生成静态快照 | `cd web && npx tsx scripts/snapshot.ts` |
+| 生成静态快照（日常，跳过回测） | `cd web && SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts` |
+| VPS 公开一键（日常，默认无回测） | `./scripts/vps-refresh-public-snapshot.sh` |
+| VPS 策略体检（含回测写回公开页） | `SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh` |
 | 本地监控日志 | `./scripts/monitor-dashboard.sh` → `tail -f .monitor/logs/current.log` |
 | 本地预览静态页 | `python3 -m http.server 8765 --directory docs` |
 
