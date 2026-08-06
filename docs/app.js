@@ -56,6 +56,29 @@ function itemWarnings(item) {
   return Array.isArray(item?.warnings) ? item.warnings.filter(Boolean) : [];
 }
 
+/** Group identical warning bodies (strip symbol / "fundamental warning:" prefixes). */
+function warningBodyKey(warning) {
+  const text = String(warning ?? "").trim();
+  if (!text) return "";
+  const fund = text.match(/^(?:\S+\s+.+?\s+)?fundamental warning:\s*(.*)$/);
+  if (fund) return fund[1].trim();
+  const spot = text.match(/^(?:\S+\s+.+?\s+)?spot warning:\s*(.*)$/);
+  if (spot) return spot[1].trim();
+  const colon = text.match(/^[^:]+:\s*(.*)$/);
+  if (colon && !text.includes("://")) return colon[1].trim();
+  return text;
+}
+
+function collapseDuplicateWarnings(warnings) {
+  const counts = new Map();
+  for (const warning of warnings ?? []) {
+    if (!warning) continue;
+    const key = warningBodyKey(warning) || String(warning);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([body, n]) => (n > 1 ? `${n} 只：${body}` : body));
+}
+
 function renderSnapshotAlerts({ analyst, signals, backtest }) {
   const box = $("#snapshot-alerts");
   box.innerHTML = "";
@@ -63,11 +86,13 @@ function renderSnapshotAlerts({ analyst, signals, backtest }) {
   const analystErrors = (analyst.items ?? [])
     .filter((item) => item.error)
     .map((item) => `${item.symbol}: ${item.error}`);
-  const analystWarnings = (analyst.items ?? []).flatMap((item) =>
-    itemWarnings(item).map((warning) => `${item.symbol}: ${warning}`),
+  const analystWarnings = collapseDuplicateWarnings(
+    (analyst.items ?? []).flatMap((item) =>
+      itemWarnings(item).map((warning) => `${item.symbol}: ${warning}`),
+    ),
   );
-  const signalWarnings = (signals?.warnings ?? []).filter(Boolean);
-  const backtestWarnings = (backtest?.warnings ?? []).filter(Boolean);
+  const signalWarnings = collapseDuplicateWarnings((signals?.warnings ?? []).filter(Boolean));
+  const backtestWarnings = collapseDuplicateWarnings((backtest?.warnings ?? []).filter(Boolean));
 
   if (analystErrors.length > 0) alerts.push(["error", "一致预期部分不可用", firstItems(analystErrors)]);
   if (analystWarnings.length > 0) alerts.push(["warning", "一致预期警告", firstItems(analystWarnings)]);
@@ -227,8 +252,9 @@ function renderSignals({ universe, signals }) {
     ]));
   }
   $("#signals-summary").textContent = `${buys} 买入 · ${sells} 卖出`;
-  if ((signals.warnings ?? []).length > 0) {
-    $("#signals-summary").textContent += ` · ${signals.warnings.length} 条输入警告`;
+  const collapsedSignalWarnings = collapseDuplicateWarnings(signals.warnings ?? []);
+  if (collapsedSignalWarnings.length > 0) {
+    $("#signals-summary").textContent += ` · ${collapsedSignalWarnings.length} 条输入警告`;
   }
 }
 
@@ -272,8 +298,9 @@ function renderBacktest(bt) {
     ]));
   }
   $("#trades-count").textContent = `共 ${trades.length} 笔（最新在上）`;
-  if ((bt.warnings ?? []).length > 0) {
-    $("#trades-count").textContent += ` · ${bt.warnings.length} 条输入警告`;
+  const collapsedBtWarnings = collapseDuplicateWarnings(bt.warnings ?? []);
+  if (collapsedBtWarnings.length > 0) {
+    $("#trades-count").textContent += ` · ${collapsedBtWarnings.length} 条输入警告`;
   }
 }
 

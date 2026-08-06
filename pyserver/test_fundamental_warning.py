@@ -1,4 +1,4 @@
-"""Unit tests for /fundamental non-realtime latest_close warning."""
+"""Unit tests for /fundamental latest_close audit (field_sources, not warning spam)."""
 from __future__ import annotations
 
 import unittest
@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import main
 
+EOD_MSG = "latest_close is latest daily close from AkShare stock_value_em, not realtime"
+
 
 class FundamentalLatestCloseWarningTest(unittest.TestCase):
-    def test_stock_value_em_latest_close_adds_non_realtime_warning(self) -> None:
+    def test_stock_value_em_latest_close_uses_field_sources_not_warning(self) -> None:
         stock_value = {
             "pe_ttm": 12.5,
             "pb": 2.1,
@@ -28,10 +30,8 @@ class FundamentalLatestCloseWarningTest(unittest.TestCase):
             out = main.fundamental("600519")
 
         self.assertEqual(out["latest_close"], 88.8)
-        self.assertIn(
-            "latest_close is latest daily close from AkShare stock_value_em, not realtime",
-            out["warnings"],
-        )
+        self.assertEqual(out["field_sources"].get("latest_close"), "akshare_stock_value_em")
+        self.assertNotIn(EOD_MSG, out["warnings"])
 
     def test_missing_latest_close_has_no_non_realtime_warning(self) -> None:
         stock_value = {
@@ -53,10 +53,8 @@ class FundamentalLatestCloseWarningTest(unittest.TestCase):
             out = main.fundamental("600519")
 
         self.assertIsNone(out.get("latest_close"))
-        self.assertNotIn(
-            "latest_close is latest daily close from AkShare stock_value_em, not realtime",
-            out["warnings"],
-        )
+        self.assertNotIn(EOD_MSG, out["warnings"])
+        self.assertNotIn("latest_close", out.get("field_sources", {}))
 
 
 if __name__ == "__main__":
