@@ -42,7 +42,7 @@ test("backtest runs to an equity curve with mock LLM", async ({ page }) => {
   await page.getByLabel("起始").fill(fmt(start));
   await page.getByLabel("结束").fill(fmt(today));
   await page.getByLabel("调仓周期").fill("5");
-  await page.getByRole("button", { name: "运行回测" }).click();
+  await page.getByRole("button", { name: "运行体检" }).click();
   // Result: KPI cards + rendered recharts equity curve.
   await expect(page.getByText("总收益")).toBeVisible({ timeout: 120_000 });
   await expect(page.getByRole("heading", { name: "权益曲线" })).toBeVisible();

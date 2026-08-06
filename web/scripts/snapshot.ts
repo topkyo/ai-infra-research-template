@@ -15,6 +15,7 @@ import type { SymbolSeries } from "../lib/backtest";
 import type { Signal, SymbolSnapshot } from "../lib/deepseek";
 import type { Analyst, Fundamental, Kline, Spot } from "../lib/pyserver";
 import type { UniverseEntry } from "../lib/universe";
+import { buildSnapshotMeta } from "../lib/snapshot-meta";
 
 // Load .env.local BEFORE importing modules that read process.env at module scope.
 (() => {
@@ -144,6 +145,22 @@ export function loadSignalSnapshot(
   };
 }
 
+export function readRetainedBacktestGeneratedAt(outDir: string): string | null {
+  const backtestPath = path.join(outDir, "backtest.json");
+  if (!fs.existsSync(backtestPath)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(backtestPath, "utf-8")) as {
+      generated_at?: unknown;
+    };
+    const g = parsed.generated_at;
+    if (typeof g !== "string" || !g) return null;
+    if (Number.isNaN(new Date(g).getTime())) return null;
+    return g;
+  } catch {
+    return null;
+  }
+}
+
 export function loadBacktestSeries(
   entry: UniverseEntry,
   klinesRes: PromiseSettledResult<Kline[]>,
@@ -259,6 +276,8 @@ async function main() {
     console.log("[signals] skipped");
   }
 
+  const retainedGeneratedAt = readRetainedBacktestGeneratedAt(OUT);
+
   // ----- backtest --------------------------------------------------------
   if (!process.env.SNAPSHOT_SKIP_BACKTEST) {
     const endDate = process.env.SNAPSHOT_BACKTEST_END ?? new Date().toISOString().slice(0, 10);
@@ -310,10 +329,19 @@ async function main() {
     console.log("[backtest] skipped");
   }
 
-  write("meta.json", {
-    generated_at: new Date().toISOString(),
-    universe_count: u.entries.length,
-  });
+  write(
+    "meta.json",
+    buildSnapshotMeta({
+      universeCount: u.entries.length,
+      steps: {
+        universe_refresh: process.env.SNAPSHOT_STEP_UNIVERSE_REFRESH === "1",
+        analyst: true,
+        signals: !process.env.SNAPSHOT_SKIP_SIGNALS,
+        backtest: !process.env.SNAPSHOT_SKIP_BACKTEST,
+      },
+      retainedBacktestGeneratedAt: retainedGeneratedAt,
+    }),
+  );
   console.log("done.");
 }
 

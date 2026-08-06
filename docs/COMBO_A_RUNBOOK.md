@@ -109,7 +109,18 @@ ssh -L 3000:127.0.0.1:3000 goyun
 - [ ] **模式 A：** 私有 HTTPS 正常，且 **Basic Auth 已生效**（未认证被拒绝）。
 - [ ] 公开 URL（可选）：Vercel/Pages 静态快照为最近一次 `snapshot.ts` 输出。
 - [ ] **安全**：外网无法访问 `:8001`；API key 与 `private/holdings.local.json` 未进入公开仓库或 `docs/data/`。
-- [ ] 日常更新公开快照（VPS 一键）：`cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh`（详见 [OPERATIONS.md](OPERATIONS.md)「静态快照」）。
+- [ ] **日常**更新公开快照（VPS 一键，**默认无回测**；刷池 + analyst/signals，公开页沿用旧 `backtest.json`）：
+  ```bash
+  cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh
+  ```
+  档位说明见 [OPERATIONS.md](OPERATIONS.md)「静态快照 → 花费档位」。
+- [ ] **策略体检**（股票池或策略有实质变更后；私有 UI 或写回公开回测）：
+  - 私有研究台：<http://127.0.0.1:3000/backtest>（SSH 隧道后本机访问），**不**自动部署 Vercel。
+  - 公开页也需新回测时：
+    ```bash
+    cd ~/github/ai-infra-dashboard && SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh
+    ```
+  - 仅重跑信号、跳过刷池：`SNAPSHOT_SKIP_UNIVERSE_REFRESH=1 ./scripts/vps-refresh-public-snapshot.sh`
 - [ ] 持仓文件权限建议：`chmod 600 private/holdings.local.json`。
 
 ## H. 磁盘与监控
