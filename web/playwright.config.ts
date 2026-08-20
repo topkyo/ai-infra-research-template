@@ -33,7 +33,8 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: "npm run dev -- --port 3100",
+      command:
+        'node -e "const fs=require(\'fs\'); if(!fs.existsSync(\'data/universe.json\')) fs.copyFileSync(\'data/universe.example.json\',\'data/universe.json\')" && npm run dev -- --port 3100',
       env: {
         PYSERVER_URL: "http://127.0.0.1:8101",
         // Deterministic offline LLM so full signal/backtest flows run in tests.

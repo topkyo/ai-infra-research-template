@@ -42,12 +42,23 @@ docker compose run --rm --user root web chown -R app:app /app/.cache
 
 Verify: `docker compose run --rm web id` and `docker compose run --rm pyserver id` should show `uid=1001(app)`. Full runbook: [docs/DEPLOY.md](../docs/DEPLOY.md) §3.
 
+## Production watchlist (universe)
+
+The **production** observation list is the host-local file **`web/data/universe.json`**, which is **gitignored** (not the committed `web/data/universe.example.json` template). Compose bind-mounts `./web/data` → `/app/data`, so the container reads and writes the same host file. After cloning, copy the example once:
+
+```bash
+cp web/data/universe.example.json web/data/universe.json
+```
+
+Then edit or refresh `web/data/universe.json` on the host; do not commit it.
+
 ## What is persisted here
 
 | Path | Purpose |
 |------|---------|
 | `holdings.local.json` | Real-mode portfolio (`./private` → `/app/private`) |
-| `../web/data/` | Universe JSON (`./web/data` → `/app/data`; writable by uid 1001) |
+| `../web/data/universe.json` | Production watchlist (gitignored; `./web/data` → `/app/data`) |
+| `../web/data/universe.example.json` | Template in git only — not used at runtime unless copied |
 | (Docker volume `web-cache`) | Web SQLite cache at `/app/.cache` inside the container |
 | (Docker volume `pyserver-cache`) | pyserver SQLite cache at `/app/cache-data` |
 

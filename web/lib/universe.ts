@@ -23,12 +23,30 @@ export interface UniverseFile {
 
 const FILE = path.join(process.cwd(), "data", "universe.json");
 
+function missingUniverseError(): Error {
+  return new Error(
+    "未找到股票池文件 web/data/universe.json。请复制 web/data/universe.example.json 为 web/data/universe.json 后重试。",
+  );
+}
+
 export function readUniverse(): UniverseFile {
+  if (!fs.existsSync(FILE)) {
+    throw missingUniverseError();
+  }
   const raw = fs.readFileSync(FILE, "utf-8");
-  return JSON.parse(raw) as UniverseFile;
+  const parsed = JSON.parse(raw) as UniverseFile;
+  if (!Array.isArray(parsed.entries) || parsed.entries.length === 0) {
+    throw missingUniverseError();
+  }
+  return parsed;
 }
 
 export function writeUniverse(file: UniverseFile): void {
+  if (!Array.isArray(file.entries) || file.entries.length === 0) {
+    throw new Error(
+      "拒绝写入空股票池。请复制 web/data/universe.example.json 为 web/data/universe.json，或保留至少一只标的。",
+    );
+  }
   // Atomic write: temp file + rename so concurrent readers never see a
   // partially-written JSON. Requires a directory bind-mount for Docker
   // (compose mounts ./web/data → /app/data); a single-file bind of

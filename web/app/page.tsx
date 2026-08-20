@@ -7,7 +7,32 @@ import UniverseTable from "./UniverseTable";
 export const dynamic = "force-dynamic";
 
 export default function Home() {
-  const universe = readUniverse();
+  let universe;
+  try {
+    universe = readUniverse();
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const setupHint = /universe\.example\.json/.test(message);
+    return (
+      <div className="container">
+        <header className="page-header">
+          <div>
+            <div className="eyebrow">{SITE_EYEBROW}</div>
+            <h1>{SITE_NAME}</h1>
+            <p>{SITE_HERO}</p>
+          </div>
+        </header>
+        {setupHint ? (
+          <p>
+            请复制 <code>web/data/universe.example.json</code> 为{" "}
+            <code>web/data/universe.json</code>，再刷新本页。
+          </p>
+        ) : (
+          <p role="alert">股票池读取失败：{message}</p>
+        )}
+      </div>
+    );
+  }
   const entries = universe.entries;
   const globalCount = entries.filter((e) => e.global_supply).length;
   const themeCount = new Set(entries.map((e) => e.theme)).size;

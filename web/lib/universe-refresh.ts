@@ -254,6 +254,12 @@ export async function applyRefresh(
   }
   newEntries.push(...added);
 
+  if (newEntries.length === 0) {
+    throw new Error(
+      "拒绝把股票池刷成空列表。请复制 web/data/universe.example.json 为 web/data/universe.json，或保留至少一只标的。",
+    );
+  }
+
   const changed = added.length > 0 || removeSet.size > 0 || reclassified.length > 0;
   if (changed) {
     const next: UniverseFile = {
