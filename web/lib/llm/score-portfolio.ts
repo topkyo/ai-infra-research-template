@@ -1,6 +1,6 @@
 import { resolveLlmConfig } from "./config";
 import { mockPortfolioTargetFor, mockProviderActive } from "./mock";
-import { PORTFOLIO_STRATEGY_SYSTEM } from "./prompts";
+import { portfolioStrategySystem } from "./prompts";
 import { chatWithScoreRetry } from "./score-retry";
 import {
   chunks,
@@ -57,7 +57,7 @@ async function scorePortfolioTargetsBatchLlm(
   };
 
   const messages: ChatMessage[] = [
-    { role: "system" as const, content: PORTFOLIO_STRATEGY_SYSTEM },
+    { role: "system" as const, content: portfolioStrategySystem() },
     { role: "user" as const, content: JSON.stringify(userPayload) },
   ];
   const cfg = resolveLlmConfig();

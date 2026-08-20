@@ -15,6 +15,7 @@ __pycache__/
 pyserver/cache.db*
 web/.cache/
 web/data/holdings.local.json
+web/data/thesis.md
 private/holdings.local.json
 private/web-cache/
 /.claude/

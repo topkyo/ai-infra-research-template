@@ -1,6 +1,6 @@
 import { resolveLlmConfig } from "./config";
 import { mockProviderActive, mockSignalFor } from "./mock";
-import { STRATEGY_SYSTEM, STRATEGY_SYSTEM_BACKTEST } from "./prompts";
+import { strategySystem, strategySystemBacktest } from "./prompts";
 import { chatWithScoreRetry } from "./score-retry";
 import {
   chunks,
@@ -90,7 +90,7 @@ async function scoreSymbolsBatchLlm(
       };
 
   const messages: ChatMessage[] = [
-    { role: "system" as const, content: isBacktest ? STRATEGY_SYSTEM_BACKTEST : STRATEGY_SYSTEM },
+    { role: "system" as const, content: isBacktest ? strategySystemBacktest() : strategySystem() },
     { role: "user" as const, content: JSON.stringify(userPayload) },
   ];
   const model = opts.mode === "backtest" ? resolveLlmConfig().backtestModel : resolveLlmConfig().model;
