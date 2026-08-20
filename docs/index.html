@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>topkyo · AI 基建研究台 · 静态快照</title>
   <meta name="description" content="topkyo 个人 AI 基建主题 A 股研究仪表盘静态快照：算力、互连、散热、电力、IDC、存储、半导体设备与材料。" />
-  <link rel="canonical" href="https://topkyo.github.io/ai-infra-dashboard/" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <meta property="og:type" content="website" />
@@ -13,22 +12,21 @@
   <meta property="og:site_name" content="topkyo · AI 基建研究台" />
   <meta property="og:title" content="topkyo · AI 基建研究台 · 静态快照" />
   <meta property="og:description" content="个人 AI 基建主题 A 股股票池、一致预期参考、DeepSeek 信号与回测快照。" />
-  <meta property="og:url" content="https://topkyo.github.io/ai-infra-dashboard/" />
-  <meta property="og:image" content="https://topkyo.github.io/ai-infra-dashboard/social-card.svg" />
+  <meta property="og:image" content="./social-card.svg" />
   <meta property="og:image:alt" content="topkyo · AI 基建研究台 社交分享卡片" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="topkyo · AI 基建研究台 · 静态快照" />
   <meta name="twitter:description" content="个人 AI 基建主题 A 股股票池、分析师一致预期、DeepSeek 信号与策略回测。" />
-  <meta name="twitter:image" content="https://topkyo.github.io/ai-infra-dashboard/social-card.svg" />
+  <meta name="twitter:image" content="./social-card.svg" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="container">
     <header class="page-header">
       <div>
-        <div class="eyebrow">个人研究 · DeepSeek · Tushare · A 股 · 静态快照</div>
+        <div class="eyebrow">个人研究 · DeepSeek · A 股 · 静态快照</div>
         <h1>topkyo · AI 基建研究台</h1>
         <p>
           跟踪算力芯片、光模块、AI 服务器、液冷、电力、IDC、半导体材料与 AI-PCB 等 AI 基建供给侧标的。
@@ -38,7 +36,7 @@
       </div>
       <nav class="header-actions">
         <a class="button secondary" href="#universe">股票池</a>
-        <a class="button secondary" href="#signals">实时信号</a>
+        <a class="button secondary" href="#signals">信号快照</a>
         <a class="button secondary" href="#backtest">回测</a>
       </nav>
     </header>
@@ -63,7 +61,7 @@
     </div>
     <div class="theme-grid" id="universe-grid"></div>
 
-    <h2 class="subheading" id="signals">DeepSeek 实时信号</h2>
+    <h2 class="subheading" id="signals">DeepSeek 信号快照</h2>
     <p class="muted">LLM 统一输出 buy / hold / sell，规则层只提供价格、估值、增速、PEG 与数据质量特征。</p>
     <div class="theme-panel">
       <div class="theme-title"><strong>信号列表</strong><span id="signals-summary"></span></div>

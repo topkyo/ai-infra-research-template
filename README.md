@@ -1,11 +1,8 @@
-# topkyo · AI 基建研究台
+# topkyo · A 股主题研究台（模板）
 
-面向中国 A 股 AI 基建主题的个人研究仪表盘，聚焦算力芯片、光模块、AI 服务器、液冷、电力、IDC、存储、半导体设备与材料等供给侧方向。项目用于维护股票池、查看行情与一致预期参考、生成 LLM 策略信号，并做滚动回测。
+面向中国 A 股主题研究的**个人研究台模板**，用于维护股票池、查看行情与一致预期参考、生成 LLM 策略信号，并做滚动回测。输出仅供人工复核，**不构成投资建议，不能当作交易指令**。行情来自第三方非官方接口，**默认不是实时成交价**。
 
-> 个人研究工具，不构成任何投资建议。<br>
-> 基于 [madeye/silicon-civilization-stock-trade](https://github.com/madeye/silicon-civilization-stock-trade) fork 后定制。
-
-静态展示页：<https://ai-infra-dashboard-docs.vercel.app>
+> 源自 [madeye/silicon-civilization-stock-trade](https://github.com/madeye/silicon-civilization-stock-trade) fork 后定制。本 fork 增加：组合感知目标仓位、严肃看盘失败语义、Combo A 进阶部署、研究候选排序。默认示例叙事为 AI 基建；操作者可用被 gitignore 的 `web/data/thesis.md` 覆盖。
 
 ## 核心能力
 
@@ -19,10 +16,10 @@
 
 ## 产品界面
 
-- `/`：股票池总览，展示主题、现价、一致预期参考、数据来源和刷新入口；顶栏「公开快照」链到 Vercel 静态站（可用 `NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL` 覆盖，默认见 `web/lib/site.ts`）。
+- `/`：股票池总览，展示主题、现价、一致预期参考、数据来源和刷新入口。仅当配置了 `NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL` 时顶栏才显示「公开快照」；模板默认不链到任何公开站。
 - `/signals`：流式生成组合持仓信号，支持真实持仓和模拟资金模式，先展示加载进度，再展示目标仓位、调仓差额或失败原因。
 - `/backtest`：策略体检页（全年回测 LLM 消耗高）；配置日期、调仓周期、最大持仓、初始资金、费率、滑点、基准指数和涨跌停限制。
-- `docs/`：无需服务端和 API key 的静态快照页面（Combo A 托管于 Vercel）。
+- `docs/`：无需服务端和 API key 的静态快照页面。某操作者把 Combo A 托管到 Vercel 属于自建实例，不是模板官方面。
 
 ## 架构
 
@@ -87,6 +84,14 @@ LLM 响应按 prompt + model 哈希缓存到 `web/.cache/web.db`，约 12 小时
 
 ## 本地启动
 
+默认只绑 loopback。不要把 `docker-compose.yml` 改成 `0.0.0.0` 或 `-p 3000:3000` 暴露到公网网卡，否则会直接暴露无应用层鉴权的 API（见 [SECURITY.md](SECURITY.md)）。
+
+### 0. 准备股票池
+
+```bash
+cp web/data/universe.example.json web/data/universe.json
+```
+
 ### 1. 启动 pyserver
 
 ```bash
@@ -94,7 +99,7 @@ cd pyserver
 cp env.example .env
 # 免费真实数据无需 Tushare token；如需 Tushare 补缺，再设置 TUSHARE_TOKEN 和 MARKET_ENABLE_TUSHARE_SECONDARY=1
 uv sync
-uv run uvicorn main:app --port 8001 --reload
+uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 ### 2. 启动 Web
@@ -145,7 +150,7 @@ npm run dev
 |---|---|
 | [docs/RESEARCH_WORKFLOW.md](docs/RESEARCH_WORKFLOW.md) | AI 基建一级过滤、5-6 只候选深挖、LLM/炼丹炉二级讨论流程。 |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | 本地运行、环境变量、缓存、LLM 调优、常用排障。 |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | 生产部署：推荐组合 A（VPS 私有 Docker Compose + Caddy，Vercel 公开 `docs/` 快照）。 |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | 生产部署：默认本机自托管；组合 A 为进阶可选（VPS 私有 Docker Compose + Caddy，Vercel 公开 `docs/` 快照）。 |
 | [docs/COMBO_A_RUNBOOK.md](docs/COMBO_A_RUNBOOK.md) | 组合 A 上机勾选清单（DNS、防火墙、Compose、Caddy、Vercel、验收）。 |
 | [docs/README.md](docs/README.md) | 公开静态快照说明（推荐 Vercel；GitHub Pages 备选）。 |
 | [pyserver/README.md](pyserver/README.md) | 市场数据 sidecar、端点、数据源优先级和响应元数据。 |

@@ -2,16 +2,20 @@
 
 完整交互应用包括 Next.js Web、Python pyserver、LLM key 和市场数据缓存。部署后可使用实时行情、在线信号、回测和股票池刷新。
 
-## 推荐生产形态：组合 A（VPS 私有 + Vercel 公开）
+## 默认部署：本机自托管
 
-**组合 A** 是本仓库推荐的线上部署方式：
+**默认路径**是在本机运行 pyserver + Next.js（`./start.sh` 或分别启动两个进程），端口只监听 loopback。Docker Compose 同样将发布端口绑定到 `127.0.0.1`；容器内 Web 可监听全部接口，对外暴露仍由 compose 的 loopback 前缀约束。
+
+## 进阶可选：组合 A（VPS 私有 + Vercel 公开）
+
+**组合 A** 是作者/进阶操作者的线上部署方式，不是模板默认路径：
 
 | 平面 | 托管 | 内容 |
 |---|---|---|
 | **私有研究台** | VPS（Docker Compose + Caddy） | 实时行情、LLM 信号、回测、股票池刷新；含 API key 与真实持仓 |
 | **公开快照** | [Vercel](https://vercel.com) 静态托管 `docs/` | 最近一次研究快照（股票池、信号、回测 JSON），无 API key |
 
-私有面只通过 HTTPS（可选 Basic Auth）暴露 Next.js；pyserver 绑定 `127.0.0.1:8001`，不对外发布。公开面与私有面解耦，由 `web/scripts/snapshot.ts` 生成 `docs/data/` 后部署。
+私有面只通过 HTTPS 暴露 Next.js，且 **Mode A 必须启用 Caddy Basic Auth**；pyserver 绑定 `127.0.0.1:8001`，不对外发布。公开面与私有面解耦，由 `web/scripts/snapshot.ts` 生成 `docs/data/` 后部署。
 
 **操作清单：** [COMBO_A_RUNBOOK.md](COMBO_A_RUNBOOK.md)（DNS、防火墙、首次上机逐步勾选）。
 
@@ -87,6 +91,8 @@ Tushare 接口权限见 [TUSHARE-PERMISSIONS.md](TUSHARE-PERMISSIONS.md)。
 
 - `127.0.0.1:3000` — Next.js
 - `127.0.0.1:8001` — pyserver（仅容器内与宿主机 loopback 访问）
+
+**反例**：不要把 `ports` 改成 `0.0.0.0:3000:3000` / `0.0.0.0:8001:8001`，或使用 `- "3000:3000"` 绑定到公网网卡，否则会直接暴露无应用层鉴权的 API（见 [../SECURITY.md](../SECURITY.md)）。
 
 web 服务挂载：
 

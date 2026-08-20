@@ -10,7 +10,7 @@
     "prebuild": "node scripts/assert-no-next-dev.mjs",
     "predev": "node scripts/ensure-better-sqlite3.mjs",
     "prestart": "node scripts/ensure-better-sqlite3.mjs && node scripts/fix-next-server-chunks.mjs",
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "build": "rm -rf .next && next build && node scripts/fix-next-server-chunks.mjs",
     "start": "next start",
     "lint": "next lint",

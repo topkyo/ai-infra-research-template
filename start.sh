@@ -93,7 +93,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "[start] launching pyserver on :$PY_PORT"
-( cd "$ROOT/pyserver" && uv run uvicorn main:app --port "$PY_PORT" ) &
+( cd "$ROOT/pyserver" && uv run uvicorn main:app --host 127.0.0.1 --port "$PY_PORT" ) &
 PY_PID=$!
 
 echo "[start] launching web on :$WEB_PORT"
