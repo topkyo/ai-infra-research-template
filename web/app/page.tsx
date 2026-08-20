@@ -23,14 +23,16 @@ export default function Home() {
         <div className="header-actions">
           <Link href="/signals" className="button secondary">实时信号</Link>
           <Link href="/backtest" className="button secondary">策略体检</Link>
-          <a
-            href={SITE_PUBLIC_SNAPSHOT_URL}
-            className="button secondary"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            公开快照
-          </a>
+          {SITE_PUBLIC_SNAPSHOT_URL ? (
+            <a
+              href={SITE_PUBLIC_SNAPSHOT_URL}
+              className="button secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              公开快照
+            </a>
+          ) : null}
         </div>
       </header>
 

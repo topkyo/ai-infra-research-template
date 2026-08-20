@@ -7,7 +7,7 @@
 | 组件 | 要求 |
 |---|---|
 | Node.js | 本地以根目录 [`.nvmrc`](../.nvmrc) 为准；`better-sqlite3` 必须按实际运行时 Node ABI 重建。 |
-| Python | `pyserver/pyproject.toml` 要求 Python `>=3.13`，依赖由 `uv` 管理。 |
+| Python | `pyproject.toml` 声明 `requires-python >=3.11`；CI/Docker 验证 3.13，推荐本地 3.13。依赖由 `uv` 管理。 |
 | LLM key | `OPENCODE_GO_API_KEY` 或 `DEEPSEEK_API_KEY`。 |
 | 市场数据 | 默认免费真实数据无需 Tushare；Tushare 只作为显式次级源。 |
 
@@ -42,7 +42,7 @@ MARKET_ENABLE_TUSHARE_SECONDARY=1
 ```bash
 cd pyserver
 uv sync
-uv run uvicorn main:app --port 8001 --reload
+uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 ```bash
@@ -203,8 +203,6 @@ cd ~/github/ai-infra-dashboard
 - 只生成不部署：`SKIP_DEPLOY=1 ./scripts/vps-refresh-public-snapshot.sh`
 - 仅重新部署已有 `docs/data`：`export VERCEL_TOKEN=… && ./scripts/deploy-public-snapshot.sh`（若明显旧于 `web/data/universe.json` 会拒绝，除非 `FORCE_STALE_SNAPSHOT_DEPLOY=1`）
 
-公开站：https://ai-infra-dashboard-docs.vercel.app
-
 ### 本机手动
 
 完整刷新需要本机 pyserver 正常运行，并在 `web/.env.local` 配置 LLM key：
@@ -267,4 +265,8 @@ cd pyserver && uv run python -m py_compile main.py
 
 ## 生产部署
 
-线上推荐 **组合 A**（VPS 私有研究台 + Vercel 公开快照）。上机勾选清单见 [COMBO_A_RUNBOOK.md](COMBO_A_RUNBOOK.md)；完整步骤见 [DEPLOY.md](DEPLOY.md)。
+线上可选 **组合 A**（VPS 私有研究台 + 静态快照托管）。上机勾选清单见 [COMBO_A_RUNBOOK.md](COMBO_A_RUNBOOK.md)；完整步骤见 [DEPLOY.md](DEPLOY.md)。
+
+### 参考：某操作者自建实例
+
+仓库维护者曾将静态快照部署到 Vercel：<https://ai-infra-dashboard-docs.vercel.app>。这是**某操作者自建实例，非模板官方面**；fork 后请自行配置 `NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL` 与托管方式，模板默认不链到该 URL。

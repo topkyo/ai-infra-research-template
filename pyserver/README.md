@@ -61,7 +61,7 @@ cp env.example .env
 
 ```bash
 uv sync
-uv run uvicorn main:app --port 8001 --reload
+uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 新增或升级依赖：

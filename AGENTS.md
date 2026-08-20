@@ -10,12 +10,12 @@ This repository is **topkyo**'s **AI infrastructure research dashboard** for Chi
 - `web/test/`: Node test-runner TypeScript tests named `*.test.ts`.
 - `web/data/universe.json`: editable stock universe data.
 - `web/data/holdings.example.json`: local holdings example; `web/data/holdings.local.json` is private and ignored.
-- `pyserver/`: FastAPI sidecar for Tushare Pro access and SQLite market-data caching.
+- `pyserver/`: FastAPI sidecar for market data (free sources first, optional Tushare secondary) and SQLite caching.
 
 ## Build, Test, and Development Commands
 
 - `cd pyserver && uv sync`: install locked Python dependencies.
-- `cd pyserver && uv run uvicorn main:app --port 8001 --reload`: run the Tushare sidecar locally.
+- `cd pyserver && uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload`: run the market-data sidecar locally.
 - `cd web && npm install`: install frontend dependencies.
 - `cd web && npm run dev`: start the Next.js dev server at `http://localhost:3000`.
 - `cd web && npm test`: run TypeScript unit tests via `node --test --import tsx`.

@@ -35,4 +35,5 @@ EXPOSE 3000
 # overrides this with the same check — keep both in sync.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Container start listens on 0.0.0.0; compose publishes 127.0.0.1 only.
 CMD ["npm", "run", "start", "--", "-p", "3000"]

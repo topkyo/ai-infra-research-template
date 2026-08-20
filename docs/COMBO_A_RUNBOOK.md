@@ -9,7 +9,7 @@
 Laptop ──ssh -L 3000:127.0.0.1:3000──► VPS 127.0.0.1:3000 (web)
                                        VPS 127.0.0.1:8001 (pyserver, 不对外)
 
-# 模式 A（有域名时）：Caddy HTTPS + 可选 Basic Auth
+# 模式 A（有域名时）：Caddy HTTPS + 强制 Basic Auth
 Internet ──HTTPS──► Caddy ──► 127.0.0.1:3000 (web)
 
 Internet ──HTTPS──► Vercel (docs/ 静态快照, Root = docs)

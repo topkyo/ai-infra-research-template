@@ -38,6 +38,8 @@ export default defineConfig({
         PYSERVER_URL: "http://127.0.0.1:8101",
         // Deterministic offline LLM so full signal/backtest flows run in tests.
         LLM_PROVIDER: "mock",
+        // Isolate from operator .env.local so smoke never sees a public snapshot link.
+        NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL: "",
       },
       port: 3100,
       timeout: 120_000,

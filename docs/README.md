@@ -2,11 +2,9 @@
 
 `docs/` 用于公开展示最近一次研究快照。它不运行 Next.js，不访问私有 API key，只读取 `docs/data/*.json`。
 
-**线上（Vercel）：** <https://ai-infra-dashboard-docs.vercel.app>
+`docs/data/*.json` **不进 git**（见 [data/README.md](data/README.md)）。部署需自行配置静态托管（Vercel、GitHub Pages 或本机 `http.server`）；若使用 Vercel，建议关闭 Git 自动生产部署，改由 CLI 推送快照数据。
 
-`docs/data/*.json` **不进 git**（见 [data/README.md](data/README.md)）。生产部署只走 VPS/本机 CLI；关闭 Vercel Git 自动生产部署。
-
-项目：`ai-infra-dashboard-docs`（Root Directory = `docs`，Framework = Other，无构建）：
+自行托管时：Root Directory = `docs`，Framework = Other，无构建。Vercel 项目名由操作者自定，不要把仓库维护者的项目名当成模板官方项目。
 
 ```bash
 ./scripts/vps-refresh-public-snapshot.sh          # 推荐：生成 + 部署
@@ -65,3 +63,7 @@ python3 -m http.server 8765 --directory docs
 - 静态页只展示最近一次快照，不代表实时行情。
 - 快照数据可能包含 LLM 信号和回测记录，只适合作为可公开研究记录。
 - 需要实时数据、在线信号生成、交互式回测或股票池刷新时，请运行完整 Next.js + pyserver 应用。
+
+## 参考：某操作者自建实例
+
+仓库维护者曾将 `docs/` 部署到 Vercel：<https://ai-infra-dashboard-docs.vercel.app>。这是**某操作者自建实例，非模板官方面**；fork 后请自行决定是否、以及如何发布静态快照。
