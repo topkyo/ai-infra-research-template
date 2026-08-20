@@ -1,6 +1,6 @@
 # pyserver 市场数据 sidecar
 
-`pyserver` 是 FastAPI sidecar，封装 Eastmoney、AkShare、BaoStock 与可选 Tushare Pro，只向 Next.js Web 提供项目需要的市场数据端点。
+`pyserver` 是 FastAPI sidecar，封装 Eastmoney、AkShare、BaoStock 与可选 Tushare 次级源，只向 Next.js Web 提供项目需要的市场数据端点。
 
 数据策略：免费源优先，Tushare 显式次级源。次级源命中和字段缺失必须通过 `source`、`warnings`、`field_sources` 可审计。
 

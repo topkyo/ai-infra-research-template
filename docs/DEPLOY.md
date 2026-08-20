@@ -22,7 +22,7 @@
 ### 部署顺序
 
 1. **Docker Compose** — 本机绑定端口、启动 web + pyserver（见下文 §1–§3）。
-2. **私有数据** — 创建 `private/holdings.local.json` 与持久化 volume（见 [private/README.md](../private/README.md)）。
+2. **私有数据** — 复制 `web/data/universe.example.json` 为 `web/data/universe.json`（gitignore）；创建 `private/holdings.local.json` 与持久化 volume（见 [private/README.md](../private/README.md)）。
 3. **Caddy** — TLS 终止、反代 `127.0.0.1:3000`（见 [deploy/README.md](../deploy/README.md)）。
 4. **Vercel 公开面**（可与步骤 1–3 并行） — Root Directory = `docs`；首次 snapshot 与部署（见 [docs/README.md](README.md)、[scripts/deploy-public-snapshot.sh](../scripts/deploy-public-snapshot.sh)）。
 

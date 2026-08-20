@@ -2,13 +2,14 @@
 
 ## Project Structure & Module Organization
 
-This repository is **topkyo**'s **AI infrastructure research dashboard** for Chinese A-share thematic stock analysis (compute, interconnect, cooling, power, IDC, storage, semiconductors).
+This repository is **topkyo**'s **AI infrastructure research dashboard template** for Chinese A-share thematic stock analysis (compute, interconnect, cooling, power, IDC, storage, semiconductors). The public template is [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template); a private operator clone may exist separately.
 
 - `web/`: Next.js 15 App Router frontend, API routes, TypeScript backtests, DeepSeek/OpenCode Go integration, SQLite cache, local holdings, and tests.
 - `web/app/`: UI pages and route handlers. Key pages include `page.tsx`, `signals/page.tsx`, and `backtest/page.tsx`.
 - `web/lib/`: shared domain logic such as `universe.ts`, `pyserver.ts`, `deepseek.ts`, `backtest.ts`, and `cache.ts`.
 - `web/test/`: Node test-runner TypeScript tests named `*.test.ts`.
-- `web/data/universe.json`: editable stock universe data.
+- `web/data/universe.example.json`: committed sample watchlist (not a recommended portfolio). Copy to gitignored `web/data/universe.json`.
+- `web/data/thesis.example.md`: default scoring narrative; optional gitignored `web/data/thesis.md` overrides it.
 - `web/data/holdings.example.json`: local holdings example; `web/data/holdings.local.json` is private and ignored.
 - `pyserver/`: FastAPI sidecar for market data (free sources first, optional Tushare secondary) and SQLite caching.
 
@@ -36,7 +37,7 @@ Recent history uses concise imperative commit subjects, for example `Replace aks
 
 ## Security & Configuration Tips
 
-Copy `pyserver/env.example` to `pyserver/.env`; leave `TUSHARE_TOKEN` empty for free live data, or set a real token only when enabling Tushare secondary. Copy `web/env.example.txt` to `web/.env.local` and set `LLM_PROVIDER=deepseek` with `DEEPSEEK_API_KEY` (or `opencode-go` + `OPENCODE_GO_API_KEY`), `PYSERVER_URL`, and LLM tuning vars as needed. Keep API keys and `web/data/holdings.local.json` local only.
+Copy `pyserver/env.example` to `pyserver/.env`; leave `TUSHARE_TOKEN` empty for free live data, or set a real token only when enabling Tushare secondary. Copy `web/env.example.txt` to `web/.env.local` and set `LLM_PROVIDER=deepseek` with `DEEPSEEK_API_KEY` (or `opencode-go` + `OPENCODE_GO_API_KEY`), `PYSERVER_URL`, and LLM tuning vars as needed. Keep API keys, `web/data/holdings.local.json`, `web/data/universe.json`, and `web/data/thesis.md` local only. External PRs go to the public template repository.
 
 **LLM workflows (do not drift from README):**
 

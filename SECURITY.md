@@ -21,9 +21,10 @@
 
 ## 漏洞报告
 
-仓库仍为 **private** 时：**当前不接受匿名外部报告**。请勿通过 Issues 或 Pull Request 提交可利用细节。
+- **公开模板仓** [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template)：请通过该仓 GitHub Settings 的 **Private vulnerability reporting** 提交。请勿通过 Issues 或 Pull Request 提交可利用细节。
+- **私有操作台仓** [topkyo/ai-infra-dashboard](https://github.com/topkyo/ai-infra-dashboard) 仍为 private 时：**不接受匿名外部报告**。
 
-仓库改为 public 且已在 GitHub 仓库 Settings 启用 **Private vulnerability reporting** 后，请仅通过该渠道提交漏洞。本文件不另设私人联系邮箱。
+本文件不另设私人联系邮箱。
 
 ## 密钥与私有数据
 

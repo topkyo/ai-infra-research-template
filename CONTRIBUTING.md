@@ -2,6 +2,8 @@
 
 感谢关注本仓库。提交改动前请先阅读 [AGENTS.md](AGENTS.md) 中的数据完整性规则与 [SECURITY.md](SECURITY.md) 中的网络边界说明。
 
+外部贡献请向公开模板仓 [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) 开 PR。私有操作台仓不接受匿名外部报告或外部 PR。
+
 ## 测试命令
 
 改动涉及 web 或 pyserver 逻辑时，请在 PR 描述中注明已运行的命令及结果：

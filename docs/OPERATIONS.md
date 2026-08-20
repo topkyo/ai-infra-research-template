@@ -24,6 +24,7 @@ CI 使用 Node 24，Dockerfile 使用 `node:24-slim`，与 `package.json` engine
 最小本地配置：
 
 ```bash
+cp web/data/universe.example.json web/data/universe.json
 cd pyserver && cp env.example .env
 cd ../web && cp env.example.txt .env.local
 ```

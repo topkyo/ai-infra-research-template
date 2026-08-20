@@ -7,4 +7,4 @@ They are gitignored on purpose so:
 1. Merging docs/markdown cannot ship stale market data via Actions
 2. `git pull` on the VPS cannot overwrite a fresh local snapshot
 
-**Do not commit these JSON files.** Refresh and deploy from the VPS (Combo A).
+**Do not commit these JSON files.** They belong on the operator host, not in the public template. Refresh and deploy from your own machine or VPS.

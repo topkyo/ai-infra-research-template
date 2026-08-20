@@ -4,15 +4,24 @@
 
 > 源自 [madeye/silicon-civilization-stock-trade](https://github.com/madeye/silicon-civilization-stock-trade) fork 后定制。本 fork 增加：组合感知目标仓位、严肃看盘失败语义、Combo A 进阶部署、研究候选排序。默认示例叙事为 AI 基建；操作者可用被 gitignore 的 `web/data/thesis.md` 覆盖。
 
+**仓库分工**
+
+| 仓 | 可见性 | 用途 |
+|---|---|---|
+| [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) | public | 对外模板与外部 PR / 漏洞报告入口 |
+| [topkyo/ai-infra-dashboard](https://github.com/topkyo/ai-infra-dashboard) | private | 维护者私有操作台；不接受匿名外部报告 |
+
+两仓代码同源。克隆后请复制 `web/data/universe.example.json` 为被忽略的 `web/data/universe.json`，不要把实盘股票池或持仓推进 git。本仓库**没有** `LICENSE` 文件。
+
 ## 核心能力
 
 | 能力 | 说明 |
 |---|---|
-| AI 基建股票池 | 按产业环节维护 A 股主题标的，数据源为 [web/data/universe.json](web/data/universe.json)。 |
+| AI 基建股票池 | 按产业环节维护 A 股主题标的。git 只跟踪 [web/data/universe.example.json](web/data/universe.example.json)；操作者实文件 `web/data/universe.json` 被 gitignore。 |
 | 行情与一致预期 | FastAPI sidecar 聚合现价、估值、成长、评级和隐含目标参考。 |
 | 组合持仓信号 | 结合真实或模拟持仓生成 5-20 个交易日目标仓位；失败时显式不可用，不合成伪结论。 |
 | 严格回测 | 按调仓周期增量重配（避免重复买卖），支持基准指数、单边费率与滑点、涨跌停封板限制（T+1 结构性满足）、信号缓存和结果存档。信号生成与成交均使用**当日收盘价**（close-to-close），不建模盘中路径；对动量类策略可能略偏乐观。**LLM 打分仅使用截至调仓日的价格动量与主题标签**，静态 PE/PB/利润增速等基本面未纳入（无 point-in-time 历史基本面，避免 look-ahead）。 |
-| 静态快照 | 输出 `docs/data/*.json`（gitignore，VPS CLI 部署到 Vercel），公开展示最近一次研究快照。 |
+| 静态快照 | 输出 `docs/data/*.json`（gitignore）。需要公开展示时由操作者自行用 VPS CLI / 静态托管发布，模板不提供官方公开站。 |
 
 ## 产品界面
 
@@ -28,7 +37,7 @@ flowchart LR
   web["Next.js App<br/>股票池 / 信号 / 回测"]
   py["FastAPI sidecar<br/>Eastmoney + AkShare + BaoStock<br/>optional Tushare secondary"]
   cache["SQLite / localStorage<br/>行情 + LLM + 回测缓存"]
-  docs["docs/ 静态快照<br/>GitHub Pages"]
+  docs["docs/ 静态快照"]
 
   web -- HTTP --> py
   web --> cache
@@ -41,7 +50,7 @@ flowchart LR
 ```text
 web/       Next.js 15 App Router、API routes、LLM 策略、回测、测试
 pyserver/  FastAPI 市场数据 sidecar，免费源优先，Tushare 可选次级源
-docs/      GitHub Pages 静态快照页面、数据和部署说明
+docs/      静态快照页面与部署说明（数据 JSON 不进 git）
 scripts/   本地运维、macOS launchd、Node 原生模块辅助脚本
 ```
 
@@ -90,6 +99,7 @@ LLM 响应按 prompt + model 哈希缓存到 `web/.cache/web.db`，约 12 小时
 
 ```bash
 cp web/data/universe.example.json web/data/universe.json
+# 可选：cp web/data/thesis.example.md web/data/thesis.md 后修改叙事
 ```
 
 ### 1. 启动 pyserver
@@ -152,7 +162,8 @@ npm run dev
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | 本地运行、环境变量、缓存、LLM 调优、常用排障。 |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | 生产部署：默认本机自托管；组合 A 为进阶可选（VPS 私有 Docker Compose + Caddy，Vercel 公开 `docs/` 快照）。 |
 | [docs/COMBO_A_RUNBOOK.md](docs/COMBO_A_RUNBOOK.md) | 组合 A 上机勾选清单（DNS、防火墙、Compose、Caddy、Vercel、验收）。 |
-| [docs/README.md](docs/README.md) | 公开静态快照说明（推荐 Vercel；GitHub Pages 备选）。 |
+| [docs/README.md](docs/README.md) | 静态快照说明（自行托管；Vercel / GitHub Pages / 本机预览）。 |
+| [docs/specs](docs/specs)、[docs/plans](docs/plans) | 已落地变更的历史记录，不代表当前推荐默认路径。 |
 | [pyserver/README.md](pyserver/README.md) | 市场数据 sidecar、端点、数据源优先级和响应元数据。 |
 | [scripts/macos/README.md](scripts/macos/README.md) | macOS launchd 本地系统服务。 |
 | [docs/TUSHARE-PERMISSIONS.md](docs/TUSHARE-PERMISSIONS.md) | Tushare 次级源权限参考。 |
@@ -160,7 +171,7 @@ npm run dev
 ## 安全
 
 - 不提交 `.env`、`.env.local`、`cache.db`、API key。
-- 不提交 `web/data/holdings.local.json`；它可能包含真实持仓、成本和现金信息。
+- 不提交 `web/data/holdings.local.json`、`web/data/universe.json`、`web/data/thesis.md`；前两者可能含真实持仓与观察名单。
 - LLM key 只放在 `web/.env.local` 或部署环境变量。
 - Tushare token 只放在 `pyserver/.env` 或部署环境变量。
 - `docs/data/*.json` 是公开静态快照（不进 git），包含研究输出；只通过 VPS CLI 部署，勿当私有持仓备份。
