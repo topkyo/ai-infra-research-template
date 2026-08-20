@@ -18,6 +18,15 @@ const universe = {
   ],
 };
 fs.writeFileSync("data/universe.json", JSON.stringify(universe, null, 2) + "\n");
+fs.writeFileSync(
+  "data/thesis.example.md",
+  `# 主题定义（示例，可复制为 thesis.md 后修改）
+
+本模板默认研究中国 A 股 AI 基建供给侧：跟踪算力芯片、光模块/高速互连、AI 服务器、液冷散热、电力、IDC、存储/HBM、半导体设备与材料、AI-PCB、功率半导体、晶圆代工与云。优先识别与全球 AI capex / 海外供应链相关的标的，不做多纯人类消费品。
+
+刷池子主题命名沿用：算力/AI芯片、光模块、AI服务器、液冷、电力、IDC、功率半导体、存储/HBM、半导体设备、半导体材料、AI-PCB、晶圆代工、云/AI基建。
+`,
+);
 fs.writeFileSync("data/holdings.local.json", JSON.stringify({
   updated_at: "2026-01-01",
   cash: 100000,

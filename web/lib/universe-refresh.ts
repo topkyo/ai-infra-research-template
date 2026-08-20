@@ -1,10 +1,11 @@
 // DeepSeek-driven universe refresh.
 //
 // Asks the model to act as a sector curator: given the current watchlist
-// and the 硅基文明消费 thesis, propose ADDS / REMOVES / RECLASSIFIES.
+// and the investment thesis, propose ADDS / REMOVES / RECLASSIFIES.
 // Every proposed symbol is validated against pyserver before being written
 // (DeepSeek will otherwise hallucinate codes that don't trade).
 import { chat } from "./deepseek";
+import { loadThesisNarrative } from "./load-thesis";
 import { fetchFundamental } from "./pyserver";
 import type { UniverseEntry, UniverseFile } from "./universe";
 import { readUniverse, writeUniverse } from "./universe";
@@ -27,13 +28,7 @@ export interface RefreshResult {
   finalCount: number;
 }
 
-const CURATOR_SYSTEM = `你是中国 A 股的硅基文明消费股研究员。
-
-主题：硅基文明（AI 算力体）自身为了存在与扩张需要"消费"的东西 ——
-算力芯片、光模块/高速互连、AI 服务器、液冷散热、功率半导体（IGBT/SiC/MOSFET）、
-电力(绿电+核电)、IDC、HBM/存储、半导体设备与材料、高速 PCB/CCL、晶圆代工、云。
-
-任务：审阅当前股票池，发现遗漏的子主题与未覆盖的龙头，识别需要剔除的标的或重新分类的标的。
+const CURATOR_TASK = `任务：审阅当前股票池，发现遗漏的子主题与未覆盖的龙头，识别需要剔除的标的或重新分类的标的。
 
 要求：
 - 添加项必须是 A 股真实上市公司，给出 6 位股票代码、中文简称、所属子主题、一句话说明。
@@ -53,6 +48,15 @@ const CURATOR_SYSTEM = `你是中国 A 股的硅基文明消费股研究员。
   "rationale": "中文,<=200字,总结主要变更与逻辑"
 }
 不要输出其他文本。`;
+
+export function curatorSystem(): string {
+  return `你是中国 A 股主题股票池研究员。
+
+主题：
+${loadThesisNarrative()}
+
+${CURATOR_TASK}`;
+}
 
 function envPositiveInt(name: string, fallback: number): number {
   const value = Number(process.env[name]);
@@ -169,7 +173,7 @@ export async function proposeRefresh(
   const timeoutMs = envPositiveInt("UNIVERSE_REFRESH_LLM_TIMEOUT_MS", 900_000);
   const raw = await chat(
     [
-      { role: "system", content: CURATOR_SYSTEM },
+      { role: "system", content: curatorSystem() },
       { role: "user", content: JSON.stringify(userPayload) },
     ],
     { responseFormat: "json_object", temperature: 0.3, bypassCache: true, timeoutMs },
