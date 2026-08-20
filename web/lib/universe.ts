@@ -23,9 +23,22 @@ export interface UniverseFile {
 
 const FILE = path.join(process.cwd(), "data", "universe.json");
 
+function missingUniverseError(): Error {
+  return new Error(
+    "未找到股票池文件 web/data/universe.json。请复制 web/data/universe.example.json 为 web/data/universe.json 后重试。",
+  );
+}
+
 export function readUniverse(): UniverseFile {
+  if (!fs.existsSync(FILE)) {
+    throw missingUniverseError();
+  }
   const raw = fs.readFileSync(FILE, "utf-8");
-  return JSON.parse(raw) as UniverseFile;
+  const parsed = JSON.parse(raw) as UniverseFile;
+  if (!Array.isArray(parsed.entries) || parsed.entries.length === 0) {
+    throw missingUniverseError();
+  }
+  return parsed;
 }
 
 export function writeUniverse(file: UniverseFile): void {

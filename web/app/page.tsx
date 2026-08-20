@@ -7,7 +7,26 @@ import UniverseTable from "./UniverseTable";
 export const dynamic = "force-dynamic";
 
 export default function Home() {
-  const universe = readUniverse();
+  let universe;
+  try {
+    universe = readUniverse();
+  } catch {
+    return (
+      <div className="container">
+        <header className="page-header">
+          <div>
+            <div className="eyebrow">{SITE_EYEBROW}</div>
+            <h1>{SITE_NAME}</h1>
+            <p>{SITE_HERO}</p>
+          </div>
+        </header>
+        <p>
+          请复制 <code>web/data/universe.example.json</code> 为{" "}
+          <code>web/data/universe.json</code>，再刷新本页。
+        </p>
+      </div>
+    );
+  }
   const entries = universe.entries;
   const globalCount = entries.filter((e) => e.global_supply).length;
   const themeCount = new Set(entries.map((e) => e.theme)).size;

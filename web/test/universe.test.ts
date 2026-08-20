@@ -82,3 +82,28 @@ test("writeUniverse uses atomic tmp+rename and leaves no .tmp behind", () => {
   assert.equal(readUniverse().updated_by, "atomic-write-test");
   assert.ok(afterStat.mtimeMs >= beforeStat.mtimeMs);
 });
+
+test("readUniverse throws when universe.json is missing", () => {
+  const target = path.join(process.cwd(), "data", "universe.json");
+  const backup = target + ".bak";
+  fs.renameSync(target, backup);
+  try {
+    assert.throws(() => readUniverse(), /universe\.example\.json/);
+  } finally {
+    fs.renameSync(backup, target);
+  }
+});
+
+test("readUniverse throws when entries is empty", () => {
+  const target = path.join(process.cwd(), "data", "universe.json");
+  const before = fs.readFileSync(target, "utf-8");
+  fs.writeFileSync(
+    target,
+    JSON.stringify({ updated_at: "2026-01-01", updated_by: "test", entries: [] }, null, 2),
+  );
+  try {
+    assert.throws(() => readUniverse(), /universe\.example\.json/);
+  } finally {
+    fs.writeFileSync(target, before);
+  }
+});

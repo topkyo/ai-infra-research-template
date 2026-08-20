@@ -103,6 +103,49 @@ function installStrictFailureFetch() {
   };
 }
 
+function installCountingFetch() {
+  let fetchCount = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    fetchCount++;
+    const url = String(input);
+    if (url.includes("api.deepseek.com") || url.includes("/klines") || url.includes("/fundamental")) {
+      return new Response("should not be called", { status: 500 });
+    }
+    return originalFetch(input);
+  }) as typeof fetch;
+  return {
+    get count() {
+      return fetchCount;
+    },
+    restore() {
+      globalThis.fetch = originalFetch;
+    },
+  };
+}
+
+test("/api/signals emits terminal error when universe.json is missing", async () => {
+  const universePath = "data/universe.json";
+  const saved = fs.readFileSync(universePath, "utf-8");
+  fs.unlinkSync(universePath);
+  const counter = installCountingFetch();
+  process.env.LLM_PROVIDER = "deepseek";
+  process.env.DEEPSEEK_API_KEY = "sk-test";
+  try {
+    const { POST } = await import("../app/api/signals/route");
+    const events = await readEvents(await POST(new NextRequest("http://test/api/signals", { method: "POST" })));
+    assert.equal(events[0]?.type, "error");
+    assert.match(String(events[0]?.message), /universe\.example\.json/);
+    assert.equal(counter.count, 0);
+    assert.equal(events.some((event) => event.type === "result"), false);
+  } finally {
+    counter.restore();
+    fs.writeFileSync(universePath, saved);
+    delete process.env.LLM_PROVIDER;
+    delete process.env.DEEPSEEK_API_KEY;
+  }
+});
+
 test("/api/signals emits terminal error when LLM scoring fails", async () => {
   const restore = installStrictFailureFetch();
   process.env.LLM_PROVIDER = "deepseek";
