@@ -10,7 +10,9 @@ export default function Home() {
   let universe;
   try {
     universe = readUniverse();
-  } catch {
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const setupHint = /universe\.example\.json/.test(message);
     return (
       <div className="container">
         <header className="page-header">
@@ -20,10 +22,14 @@ export default function Home() {
             <p>{SITE_HERO}</p>
           </div>
         </header>
-        <p>
-          请复制 <code>web/data/universe.example.json</code> 为{" "}
-          <code>web/data/universe.json</code>，再刷新本页。
-        </p>
+        {setupHint ? (
+          <p>
+            请复制 <code>web/data/universe.example.json</code> 为{" "}
+            <code>web/data/universe.json</code>，再刷新本页。
+          </p>
+        ) : (
+          <p role="alert">股票池读取失败：{message}</p>
+        )}
       </div>
     );
   }

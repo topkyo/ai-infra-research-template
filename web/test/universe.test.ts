@@ -107,3 +107,17 @@ test("readUniverse throws when entries is empty", () => {
     fs.writeFileSync(target, before);
   }
 });
+
+test("writeUniverse rejects an empty entries array", () => {
+  const target = path.join(process.cwd(), "data", "universe.json");
+  const before = fs.readFileSync(target, "utf-8");
+  assert.throws(
+    () => writeUniverse({
+      updated_at: "2026-01-01",
+      updated_by: "empty-write",
+      entries: [],
+    }),
+    /空股票池/,
+  );
+  assert.equal(fs.readFileSync(target, "utf-8"), before);
+});

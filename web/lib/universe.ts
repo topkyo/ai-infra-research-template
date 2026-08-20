@@ -42,6 +42,11 @@ export function readUniverse(): UniverseFile {
 }
 
 export function writeUniverse(file: UniverseFile): void {
+  if (!Array.isArray(file.entries) || file.entries.length === 0) {
+    throw new Error(
+      "拒绝写入空股票池。请复制 web/data/universe.example.json 为 web/data/universe.json，或保留至少一只标的。",
+    );
+  }
   // Atomic write: temp file + rename so concurrent readers never see a
   // partially-written JSON. Requires a directory bind-mount for Docker
   // (compose mounts ./web/data → /app/data); a single-file bind of

@@ -118,10 +118,33 @@ test("applyRefresh writes only when a real add remove or reclassify is applied",
   }
 });
 
-test("applyRefresh bumps updated_at when a symbol is removed", async () => {
+test("applyRefresh rejects a refresh that would persist an empty universe", async () => {
   writeBase();
+  const before = readRaw();
   const { applyRefresh } = await import("../lib/universe-refresh");
-  const result = await applyRefresh(baseUniverse, {
+  await assert.rejects(
+    () => applyRefresh(baseUniverse, {
+      adds: [],
+      removes: ["000001"],
+      reclassifies: [],
+      rationale: "剔除最后一只",
+    }),
+    /空/,
+  );
+  assert.equal(readRaw(), before);
+});
+
+test("applyRefresh bumps updated_at when a symbol is removed", async () => {
+  const two: UniverseFile = {
+    ...baseUniverse,
+    entries: [
+      ...baseUniverse.entries,
+      { symbol: "000002", name: "万科A", theme: "光模块" },
+    ],
+  };
+  fs.writeFileSync("data/universe.json", JSON.stringify(two, null, 2) + "\n");
+  const { applyRefresh } = await import("../lib/universe-refresh");
+  const result = await applyRefresh(two, {
     adds: [],
     removes: ["000001"],
     reclassifies: [],
@@ -129,8 +152,9 @@ test("applyRefresh bumps updated_at when a symbol is removed", async () => {
   });
   const next = JSON.parse(readRaw()) as UniverseFile;
   assert.deepEqual(result.applied.removed, ["000001"]);
-  assert.equal(next.entries.length, 0);
-  assert.notEqual(next.updated_at, baseUniverse.updated_at);
+  assert.equal(next.entries.length, 1);
+  assert.equal(next.entries[0].symbol, "000002");
+  assert.notEqual(next.updated_at, two.updated_at);
   assert.equal(next.updated_by, "deepseek-refresh");
 });
 
