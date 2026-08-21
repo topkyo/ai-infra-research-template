@@ -60,4 +60,20 @@ cd web && npm install && cd ..
 
 漏洞请走 GitHub 的 **Private vulnerability reporting**，不要开 Issue 贴细节。
 
-源自 [madeye/silicon-civilization-stock-trade](https://github.com/madeye/silicon-civilization-stock-trade)。
+## 致谢，以及和原作有何不同
+
+本仓库 fork 自 [madeye](https://github.com/madeye) 的 [硅基文明消费股交易系统](https://github.com/madeye/silicon-civilization-stock-trade)：Next.js 研究台、FastAPI 行情 sidecar、DeepSeek 信号与回测这条骨架是他搭的。没有那份工作，不会有这个模板。致谢。
+
+想跟原作、或继续用「硅基文明消费」叙事，请直接用上游仓库。本模板在那条骨架上改成了**可自托管的个人研究台**，主要不同：
+
+| | madeye 的原作 | 本模板 |
+|---|---|---|
+| 主题 | 硅基文明消费：做多「喂养」AI 的供给链 | 默认 AI 基建；可用本地 `thesis.md` 换成你自己的叙事 |
+| 给谁用 | 主题交易仪表盘，并可发布公开快照站 | 自己看盘用的模板；不是信号产品，也没有官方公开站 |
+| 组合 | 策略信号与回测 | 加上**持仓感知**的目标仓位；行情/LLM 失败就报错，不编造买卖结论 |
+| 股票池 | `universe.json` 进 git | 只提交示例池；你的实盘名单和持仓留在本机 |
+| 行情源 | Tushare 更前置 | 免费源优先，Tushare 可选 |
+| 网络 | 按开发服务启动 | 默认只绑本机；API 没有登录，不能对公网裸奔 |
+
+上游仍在演进。这里不跟踪它的每一个提交；有骨架层面的修复，欢迎对照原作。
+
