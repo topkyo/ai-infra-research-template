@@ -26,7 +26,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
 
 ## A. VPS 准备
 
-- [ ] **克隆仓库**到 VPS（例如 `~/github/ai-infra-dashboard`）。
+- [ ] **克隆私仓**到 VPS（例如 `~/github/ai-infra-dashboard`，origin 为 [topkyo/ai-infra-dashboard](https://github.com/topkyo/ai-infra-dashboard)）。不要 clone 公开模板仓当生产。
 - [ ] **模式 A 才需要 DNS**：私有域名 A/AAAA 指向 VPS（替换 `deploy/Caddyfile.example` 中的 `app.example.com`）。模式 B 跳过。
 - [ ] **防火墙**：
   - **模式 B（无域名）：** 不要为研究台开放 `80/443/3000/8001`（保持 SSH `22` 即可；勿把 Compose 端口绑到 `0.0.0.0`）。

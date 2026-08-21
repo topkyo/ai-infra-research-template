@@ -264,6 +264,30 @@ cd web && npm run build
 cd pyserver && uv run python -m py_compile main.py
 ```
 
+## 本机 / VPS / GitHub 如何对齐
+
+代码走 **私仓** [topkyo/ai-infra-dashboard](https://github.com/topkyo/ai-infra-dashboard)。公开模板仓 [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) 只给人 fork / 外部 PR，**不要**拿它当 VPS 生产源。
+
+| 位置 | 跟 git 什么 | 运行时数据（不进 git） |
+|---|---|---|
+| 本机 | `origin` = 私仓；改代码、跑测试 | 可选本地 `universe.json` / `.env.local`，与 VPS **不同步** |
+| VPS | 同一私仓；`~/github/ai-infra-dashboard` | 生产观察名单、`private/holdings.local.json`、`.env`、Compose volume |
+| 公开仓 | 确认无私有数据后，把私仓 `main` push 过去 | 只有 `universe.example.json` / `thesis.example.md` |
+
+日常升级 VPS 代码：
+
+```bash
+cd ~/github/ai-infra-dashboard
+git pull --ff-only
+docker compose up -d --build
+# 20G 盘在 rebuild 后建议清构建缓存，避免再次告警：
+docker builder prune -af
+```
+
+不要在 VPS 上改业务代码。`web/data/universe.json` 与持仓是宿主机文件，pull/rebuild 不应覆盖它们（已被 gitignore）；若做 `reset --hard` 或换 clone，须先备份再拷回。
+
+看盘：本机 `ssh goyun-web` 隧道到 VPS `:3000`。本机没有 `node_modules` 也不影响看 VPS。
+
 ## 生产部署
 
 线上可选 **组合 A**（VPS 私有研究台 + 静态快照托管）。上机勾选清单见 [COMBO_A_RUNBOOK.md](COMBO_A_RUNBOOK.md)；完整步骤见 [DEPLOY.md](DEPLOY.md)。

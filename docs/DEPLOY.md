@@ -40,9 +40,19 @@
 
 ## 1. 克隆仓库
 
+VPS / 本机操作台请克隆 **私仓**（不要 clone 公开模板仓当生产）：
+
 ```bash
-git clone https://github.com/topkyo/ai-infra-dashboard.git
+git clone git@github.com:topkyo/ai-infra-dashboard.git
 cd ai-infra-dashboard
+```
+
+公开模板仓 [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) 只用于对外 fork。本机、VPS、GitHub 如何对齐见 [OPERATIONS.md](OPERATIONS.md)「本机 / VPS / GitHub 如何对齐」。
+
+克隆后复制示例股票池（gitignore，不会进 git）：
+
+```bash
+cp web/data/universe.example.json web/data/universe.json
 ```
 
 ## 2. 配置 `.env`

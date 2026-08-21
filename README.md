@@ -159,7 +159,7 @@ npm run dev
 | 文档 | 用途 |
 |---|---|
 | [docs/RESEARCH_WORKFLOW.md](docs/RESEARCH_WORKFLOW.md) | AI 基建一级过滤、5-6 只候选深挖、LLM/炼丹炉二级讨论流程。 |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md) | 本地运行、环境变量、缓存、LLM 调优、常用排障。 |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | 本地运行、环境变量、缓存、LLM 调优、本机/VPS/GitHub 对齐、常用排障。 |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | 生产部署：默认本机自托管；组合 A 为进阶可选（VPS 私有 Docker Compose + Caddy，Vercel 公开 `docs/` 快照）。 |
 | [docs/COMBO_A_RUNBOOK.md](docs/COMBO_A_RUNBOOK.md) | 组合 A 上机勾选清单（DNS、防火墙、Compose、Caddy、Vercel、验收）。 |
 | [docs/README.md](docs/README.md) | 静态快照说明（自行托管；Vercel / GitHub Pages / 本机预览）。 |
