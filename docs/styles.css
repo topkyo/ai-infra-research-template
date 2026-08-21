@@ -66,7 +66,12 @@ input, select { background: var(--field); color: var(--fg); border: 1px solid va
 .alert-list { margin-top: 14px; display: grid; gap: 8px; }
 .alert { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.45; background: #fffaf0; color: var(--warn); overflow-wrap: anywhere; }
 .alert.error { background: var(--danger-weak); color: var(--danger); border-color: #ffd1cc; }
-.alert strong { display: block; margin-bottom: 3px; color: inherit; }
+.shell-empty { margin-top: 22px; }
+.shell-empty strong { display: block; margin-bottom: 8px; font-size: 16px; color: var(--fg); }
+.shell-empty p { color: var(--muted); }
+.shell-empty ol { margin: 12px 0 0; padding-left: 1.2em; color: var(--fg); line-height: 1.7; }
+.shell-empty li { margin: 6px 0; }
+.shell-empty code { white-space: break-spaces; }
 .subheading { margin-top: 30px; margin-bottom: 4px; }
 .toolbar { margin-top: 12px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; border-radius: 10px; padding: 12px; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 180px; }

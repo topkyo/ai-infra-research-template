@@ -1,13 +1,20 @@
-# docs/ 静态快照
+# docs/ 静态快照壳
 
-`docs/` 用于公开展示最近一次研究快照。它不运行 Next.js，不访问私有 API key，只读取 `docs/data/*.json`。
+这是**壳**，不是官方研究站。页面只读 `docs/data/*.json`，不跑 Next.js、不带 API key。模板仓库**不提交**这些 JSON，也没有官方公开站。
 
-`docs/data/*.json` **不进 git**（见 [data/README.md](data/README.md)）。部署需自行配置静态托管（Vercel、GitHub Pages 或本机 `http.server`）；若使用 Vercel，建议关闭 Git 自动生产部署，改由 CLI 推送快照数据。
-
-自行托管时：Root Directory = `docs`，Framework = Other，无构建。Vercel 项目名由操作者自定，不要把仓库维护者的项目名当成模板官方项目。
+克隆后若直接预览，你会看到「还没有快照数据」和生成命令，这是预期行为。
 
 ```bash
-./scripts/vps-refresh-public-snapshot.sh          # 推荐：生成 + 部署
+# 研究台已能打开 http://localhost:3000 之后：
+cd web && SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts
+python3 -m http.server 8765 --directory docs
+# 打开 http://localhost:8765/
+```
+
+要公开展示时，自行托管本目录（Vercel / GitHub Pages / 任意静态空间）。Vercel：Root = `docs`，Framework = Other，关掉 Git 自动生产部署，用 CLI 推送数据。不要把仓库维护者的 Vercel 项目当成模板官方项目。
+
+```bash
+./scripts/vps-refresh-public-snapshot.sh          # 生成 + 部署（操作者自己的托管）
 # 或已有 docs/data 时：
 ./scripts/deploy-public-snapshot.sh
 ```

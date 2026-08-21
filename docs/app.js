@@ -393,7 +393,26 @@ function drawEquityChart(curve, baseline) {
 }
 
 // ---------- Boot ----------
+function showShell(reason) {
+  const shell = $("#shell-panel");
+  const body = $("#snapshot-body");
+  const nav = document.querySelector(".header-actions");
+  const meta = $("#meta-line");
+  const err = $("#shell-error");
+  if (shell) shell.hidden = false;
+  if (body) body.hidden = true;
+  if (nav) nav.hidden = true;
+  if (meta) meta.textContent = "模板壳 · 无 docs/data 快照";
+  if (err) {
+    err.textContent = reason || "";
+  }
+}
+
 (async () => {
+  if (location.protocol === "file:") {
+    showShell("当前是 file://。请用 python3 -m http.server 8765 --directory docs 再打开。");
+    return;
+  }
   try {
     const [universe, analyst, meta] = await Promise.all([
       loadJson("universe.json"),
@@ -404,14 +423,19 @@ function drawEquityChart(curve, baseline) {
       loadJson("signals.json").catch(() => null),
       loadJson("backtest.json").catch(() => null),
     ]);
+    const shell = $("#shell-panel");
+    const body = $("#snapshot-body");
+    if (shell) shell.hidden = true;
+    if (body) body.hidden = false;
     renderKpis({ universe, analyst, signals, backtest, meta });
     renderSnapshotAlerts({ analyst, signals, backtest });
     renderUniverse({ universe, analyst });
     renderSignals({ universe, signals });
     renderBacktest(backtest);
   } catch (e) {
-    document.body.innerHTML =
-      `<div class="container"><h1>加载失败</h1><p>${e.message}</p>` +
-      `<p>请先在 <code>web/</code> 下运行 <code>npx tsx scripts/snapshot.ts</code> 生成 <code>docs/data/</code>。</p></div>`;
+    const msg = e instanceof Error ? e.message : String(e);
+    showShell(msg.includes("404") || msg.includes("Failed to fetch")
+      ? ""
+      : `读取失败：${msg}`);
   }
 })();

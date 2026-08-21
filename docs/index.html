@@ -29,10 +29,9 @@
         <div class="eyebrow">个人研究 · DeepSeek · A 股 · 静态快照</div>
         <h1>topkyo · AI 基建研究台</h1>
         <p>
-          跟踪算力芯片、光模块、AI 服务器、液冷、电力、IDC、半导体材料与 AI-PCB 等 AI 基建供给侧标的。
-          本页面为 Next.js 应用的静态快照，展示股票池、数据来源、LLM 信号与回测结果；生成脚本为 <code>web/scripts/snapshot.ts</code>。
+          这是静态快照<strong>壳</strong>：不跑 Next.js、不带 API key。有 <code>docs/data/*.json</code> 时展示你自己生成的股票池、信号和回测；模板仓库<strong>不附带</strong>研究数据，也没有官方公开站。
         </p>
-        <p class="muted" id="meta-line">加载中…</p>
+        <p class="muted" id="meta-line">正在读取 docs/data/…</p>
       </div>
       <nav class="header-actions">
         <a class="button secondary" href="#universe">股票池</a>
@@ -41,6 +40,19 @@
       </nav>
     </header>
 
+    <div id="shell-panel" class="card shell-empty" hidden>
+      <strong>还没有快照数据</strong>
+      <p>本页只读 <code>docs/data/*.json</code>（gitignore）。把流程跑通后自己生成，不要把这些 JSON 提交进 git。</p>
+      <ol>
+        <li>研究台已启动，且已复制 <code>web/data/universe.json</code></li>
+        <li>生成（可先跳过信号和回测）：<code>cd web && SNAPSHOT_SKIP_SIGNALS=1 SNAPSHOT_SKIP_BACKTEST=1 npx tsx scripts/snapshot.ts</code></li>
+        <li>预览：<code>python3 -m http.server 8765 --directory docs</code>，打开 <a href="http://localhost:8765/">http://localhost:8765/</a>（不要直接双击 HTML）</li>
+      </ol>
+      <p class="muted">要公开展示时自行托管，步骤见 <a href="./README.md">docs/README.md</a>。</p>
+      <p class="muted" id="shell-error"></p>
+    </div>
+
+    <div id="snapshot-body" hidden>
     <div class="summary-grid" id="kpi-grid"></div>
     <div id="snapshot-alerts"></div>
 
@@ -83,6 +95,8 @@
         <thead><tr><th>日期</th><th>方向</th><th>代码</th><th class="num">股数</th><th class="num">价格</th></tr></thead>
         <tbody></tbody>
       </table></div>
+    </div>
+
     </div>
 
     <footer class="muted" style="margin-top:32px;font-size:12px;line-height:1.6">

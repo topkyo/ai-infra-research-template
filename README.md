@@ -42,6 +42,8 @@ cd web && npm install && cd ..
 | `/signals` | 按持仓或模拟资金生成目标仓位 |
 | `/backtest` | 策略体检；很耗 LLM，不要天天跑 |
 
+静态快照壳在 [docs/](docs/)（`index.html`）。模板不带数据；生成与预览见 [docs/README.md](docs/README.md)。
+
 模板自带的示例股票池只有几只，用来把流程跑通，**不是推荐组合**。之后改被忽略的 `web/data/universe.json`。不要把实盘名单、持仓或 API key 提交进 git。
 
 ## 三条纪律
