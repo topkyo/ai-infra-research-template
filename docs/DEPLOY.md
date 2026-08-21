@@ -40,14 +40,12 @@
 
 ## 1. 克隆仓库
 
-VPS / 本机操作台请克隆 **私仓**（不要 clone 公开模板仓当生产）：
-
 ```bash
-git clone git@github.com:topkyo/ai-infra-dashboard.git
-cd ai-infra-dashboard
+git clone https://github.com/topkyo/ai-infra-research-template.git
+cd ai-infra-research-template
 ```
 
-公开模板仓 [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) 只用于对外 fork。本机、VPS、GitHub 如何对齐见 [OPERATIONS.md](OPERATIONS.md)「本机 / VPS / GitHub 如何对齐」。
+若你另有不公开的操作台仓，VPS 请以那一仓为 origin，不要把实盘 `universe.json` / 持仓推进公开模板。本机、VPS、公开模板如何对齐见 [OPERATIONS.md](OPERATIONS.md)「本机 / VPS / GitHub 如何对齐」。
 
 克隆后复制示例股票池（gitignore，不会进 git）：
 

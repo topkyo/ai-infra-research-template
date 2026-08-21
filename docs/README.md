@@ -64,6 +64,4 @@ python3 -m http.server 8765 --directory docs
 - 快照数据可能包含 LLM 信号和回测记录，只适合作为可公开研究记录。
 - 需要实时数据、在线信号生成、交互式回测或股票池刷新时，请运行完整 Next.js + pyserver 应用。
 
-## 参考：某操作者自建实例
-
-仓库维护者曾将 `docs/` 部署到 Vercel：<https://ai-infra-dashboard-docs.vercel.app>。这是**某操作者自建实例，非模板官方面**；fork 后请自行决定是否、以及如何发布静态快照。
+模板不提供官方公开站。需要公开展示时，用本目录的静态页自行托管，并按需设置 `NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL`。

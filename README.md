@@ -8,10 +8,14 @@
 
 | 仓 | 可见性 | 用途 |
 |---|---|---|
-| [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) | public | 对外模板与外部 PR / 漏洞报告入口 |
-| [topkyo/ai-infra-dashboard](https://github.com/topkyo/ai-infra-dashboard) | private | 维护者私有操作台；不接受匿名外部报告 |
+| [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) | public | 对外模板、外部 PR、漏洞报告入口 |
+| 维护者私有操作台 | private | 不接受匿名外部报告或外部 PR |
 
-两仓代码同源。克隆后请复制 `web/data/universe.example.json` 为被忽略的 `web/data/universe.json`，不要把实盘股票池或持仓推进 git。本仓库**没有** `LICENSE` 文件。
+公开模板与维护者操作台可同源。克隆后请复制 `web/data/universe.example.json` 为被忽略的 `web/data/universe.json`，不要把实盘股票池或持仓推进 git。
+
+## 许可
+
+本仓库**没有** `LICENSE` 文件，也**不是** OSI 开源软件。源码公开便于自托管与审阅；版权默认保留。未获书面许可前，请勿将本仓库当作可再分发的开源项目。提交 PR 不授予额外权利，见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 核心能力
 

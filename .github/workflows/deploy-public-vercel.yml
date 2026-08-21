@@ -11,6 +11,9 @@ name: deploy-public-vercel
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-public-vercel
   cancel-in-progress: true

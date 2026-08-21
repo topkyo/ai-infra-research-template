@@ -2,7 +2,7 @@
 
 感谢关注本仓库。提交改动前请先阅读 [AGENTS.md](AGENTS.md) 中的数据完整性规则与 [SECURITY.md](SECURITY.md) 中的网络边界说明。
 
-外部贡献请向公开模板仓 [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) 开 PR。私有操作台仓不接受匿名外部报告或外部 PR。
+外部贡献请向公开模板仓 [topkyo/ai-infra-research-template](https://github.com/topkyo/ai-infra-research-template) 开 PR。维护者的私有操作台不接受匿名外部报告或外部 PR。
 
 ## 测试命令
 
@@ -31,4 +31,4 @@ cd web && npm run test:e2e
 
 ## 许可
 
-本仓库未预置开源许可证文件。提交 PR 不表示授予任何额外权利；许可安排由仓库维护者单独决定。
+本仓库未预置开源许可证，**不是** OSI 开源软件。源码公开便于自托管与审阅；版权默认保留。提交 PR 不表示授予任何额外权利。

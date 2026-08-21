@@ -18,7 +18,7 @@ Internet ──HTTPS──► Vercel (docs/ 静态快照, Root = docs)
 **无公网域名时走模式 B：** 跳过本节 DNS / 80·443 防火墙与下方 §E Caddy；访问用：
 
 ```bash
-ssh -L 3000:127.0.0.1:3000 goyun
+ssh -L 3000:127.0.0.1:3000 your-vps
 # 浏览器打开 http://127.0.0.1:3000
 ```
 
@@ -26,7 +26,7 @@ ssh -L 3000:127.0.0.1:3000 goyun
 
 ## A. VPS 准备
 
-- [ ] **克隆私仓**到 VPS（例如 `~/github/ai-infra-dashboard`，origin 为 [topkyo/ai-infra-dashboard](https://github.com/topkyo/ai-infra-dashboard)）。不要 clone 公开模板仓当生产。
+- [ ] **克隆操作仓**到 VPS（例如 `~/github/ai-infra-research-template`）。公开模板只给人 Use this template / 外部 PR；生产 origin 应是你自己的仓。不要把实盘股票池或持仓推进公开模板。
 - [ ] **模式 A 才需要 DNS**：私有域名 A/AAAA 指向 VPS（替换 `deploy/Caddyfile.example` 中的 `app.example.com`）。模式 B 跳过。
 - [ ] **防火墙**：
   - **模式 B（无域名）：** 不要为研究台开放 `80/443/3000/8001`（保持 SSH `22` 即可；勿把 Compose 端口绑到 `0.0.0.0`）。

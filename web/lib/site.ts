@@ -6,9 +6,10 @@ export const SITE_DESCRIPTION =
 export const SITE_HERO =
   "跟踪算力芯片、光模块、AI 服务器、液冷、电力、IDC、半导体材料与 AI-PCB 等 AI 基建供给侧标的。";
 export const SITE_OWNER = "topkyo";
-export const SITE_REPO = "ai-infra-dashboard";
-/** metadataBase / legacy Pages URL (not the live public snapshot). */
-export const SITE_PAGES_URL = `https://${SITE_OWNER}.github.io/${SITE_REPO}/`;
+export const SITE_REPO = "ai-infra-research-template";
+/** metadataBase for OG URLs. Override with NEXT_PUBLIC_SITE_URL; do not point at a maintainer Pages/Vercel host. */
+export const SITE_PAGES_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "http://localhost:3000";
 /** Optional public static snapshot URL. Set NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL at build time. */
 export const SITE_PUBLIC_SNAPSHOT_URL =
   process.env.NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL?.trim() || "";

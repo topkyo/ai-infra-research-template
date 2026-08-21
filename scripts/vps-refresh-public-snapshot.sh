@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-shot: refresh docs/data on the VPS host, then deploy the public snapshot.
 #
-# Usage (on goyun, from repo root):
+# Usage (on the VPS, from repo root):
 #   # 日常（默认：刷池 + 信号，跳过回测）
 #   ./scripts/vps-refresh-public-snapshot.sh
 #
@@ -15,6 +15,7 @@
 #   SNAPSHOT_SKIP_SIGNALS=1                            # light refresh (skip signals)
 #   SNAPSHOT_BACKTEST_START / SNAPSHOT_BACKTEST_END
 #   VERCEL_TOKEN_FILE=~/scripts/.vercel-token          # default
+#   VERCEL_ORG_ID / VERCEL_PROJECT_ID                  # required if docs/.vercel/project.json is missing
 #   SKIP_DEPLOY=1                                      # only regenerate docs/data
 #   FORCE_STALE_SNAPSHOT_DEPLOY=1                      # pass-through to deploy guard
 #
@@ -133,22 +134,21 @@ else
     echo "[vps-snapshot] error: set VERCEL_TOKEN or create $VERCEL_TOKEN_FILE" >&2
     exit 1
   fi
-  # Pin the existing public project — bare `vercel deploy` may create a new
-  # "docs" project when docs/.vercel/project.json is missing on the VPS.
+  # Pin the operator's own Vercel project. Never fall back to a hardcoded
+  # maintainer project — that would publish a stranger's snapshot into it.
   mkdir -p docs/.vercel
   if [[ ! -f docs/.vercel/project.json ]]; then
     if [[ -n "${VERCEL_ORG_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
       printf '%s\n' "{\"projectId\":\"${VERCEL_PROJECT_ID}\",\"orgId\":\"${VERCEL_ORG_ID}\"}" \
         > docs/.vercel/project.json
     else
-      # Known Combo A public project (ai-infra-dashboard-docs).
-      printf '%s\n' '{"projectId":"prj_pHPcGwsPUjpEnBQLmdbiBD45VojP","orgId":"team_vZF69jAbikZqLi7whDRvrSx3","projectName":"ai-infra-dashboard-docs"}' \
-        > docs/.vercel/project.json
+      echo "[vps-snapshot] error: missing docs/.vercel/project.json" >&2
+      echo "[vps-snapshot] set VERCEL_ORG_ID and VERCEL_PROJECT_ID, or run: (cd docs && vercel link)" >&2
+      exit 1
     fi
   fi
   echo "[vps-snapshot] deploying docs/ to Vercel production…"
   ./scripts/deploy-public-snapshot.sh
-  echo "[vps-snapshot] public URL: https://ai-infra-dashboard-docs.vercel.app"
 fi
 
 # --- 8) docs/data is gitignored (CLI-only public plane) ---
