@@ -8,7 +8,9 @@
 
 **开箱：** 行情默认走 Eastmoney / AkShare / BaoStock，**不需要 Tushare**。看池子可以先不填任何行情 token（Tushare 只在你显式打开时当补缺）。上游文档开箱就要 Pro token。
 
-**用起来：** `/signals` 是**持仓感知**的——读你本机的现金和持仓，按现价算当前权重，再给出目标仓位和调仓差额。上游信号页对着整池打 buy/hold/sell，不问你手里有什么。没有持仓文件不会假装你空仓；行情或 LLM 失败就报错，不编造买卖结论。实盘股票池和持仓留在本机，git 里只有示例。默认叙事是 AI 基建，可用本地 `thesis.md` 覆盖。
+**用起来：** `/signals` 是**持仓感知**的——读你本机的现金和持仓，按现价算当前权重，再给出目标仓位和调仓差额。上游信号页对着整池打 buy/hold/sell，不问你手里有什么。没有持仓文件不会假装你空仓；行情或 LLM 失败就报错，不编造买卖结论。实盘股票池和持仓留在本机，git 里只有示例。
+
+默认示例是 **AI 基建**，仓库本身不绑死这个行业。换主题：把 `thesis.example.md` 复制为 `web/data/thesis.md` 写你的叙事，再把 `universe.json` 换成对应观察名单。生物医药、红利、证券、房地产等 A 股主题都可以；打分会读 `thesis.md`。一键「刷新股票池」仍带默认 AI 基建约束，彻底换题时请自己维护名单，不要指望按钮自动变成医药池。
 
 推荐用 GitHub 的 **Use this template** 建仓，或：
 
@@ -30,6 +32,7 @@ cp web/data/universe.example.json web/data/universe.json
 cp pyserver/env.example pyserver/.env
 cp web/env.example.txt web/.env.local
 # 编辑 web/.env.local，填入 DEEPSEEK_API_KEY
+# 换主题（可选）：cp web/data/thesis.example.md web/data/thesis.md 后改叙事，并编辑 universe.json
 
 nvm install && nvm use          # 不用 nvm 则自行安装 Node 24
 cd pyserver && uv sync && cd ..
