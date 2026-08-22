@@ -159,7 +159,6 @@ LLM 调用按场景分三档，避免日常公开刷新误跑全年回测（数�
 **默认一键**（刷池 + analyst/signals，跳过回测，公开页沿用旧回测）：
 
 ```bash
-cd ~/github/ai-infra-dashboard
 ./scripts/vps-refresh-public-snapshot.sh
 ```
 
@@ -182,7 +181,6 @@ SNAPSHOT_SKIP_UNIVERSE_REFRESH=1 ./scripts/vps-refresh-public-snapshot.sh
 在 VPS 仓库根目录执行（compose 健康 + 宿主机刷池/`snapshot.ts` + Vercel 部署）。**默认即日常档**：刷池 + analyst/signals，跳过回测。
 
 ```bash
-cd ~/github/ai-infra-dashboard
 ./scripts/vps-refresh-public-snapshot.sh
 ```
 

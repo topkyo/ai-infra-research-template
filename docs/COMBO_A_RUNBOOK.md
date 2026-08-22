@@ -89,7 +89,7 @@ ssh -L 3000:127.0.0.1:3000 your-vps
 - [ ] 在 VPS 配置 `~/scripts/.vercel-token`（或 `VERCEL_TOKEN`），安装 `vercel` CLI。
 - [ ] 本地或 VPS 生成**首次快照**并部署（需 pyserver + LLM key；见 [docs/README.md](README.md)）：
   ```bash
-  cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh
+  ./scripts/vps-refresh-public-snapshot.sh
   # 或：生成后单独 deploy
   # export VERCEL_TOKEN=… && ./scripts/deploy-public-snapshot.sh
   ```
@@ -105,14 +105,14 @@ ssh -L 3000:127.0.0.1:3000 your-vps
 - [ ] **安全**：外网无法访问 `:8001`；API key 与 `private/holdings.local.json` 未进入公开仓库或 `docs/data/`。
 - [ ] **日常**更新公开快照（VPS 一键，**默认无回测**；刷池 + analyst/signals，公开页沿用旧 `backtest.json`）：
   ```bash
-  cd ~/github/ai-infra-dashboard && ./scripts/vps-refresh-public-snapshot.sh
+  ./scripts/vps-refresh-public-snapshot.sh
   ```
   档位说明见 [OPERATIONS.md](OPERATIONS.md)「静态快照 → 花费档位」。
 - [ ] **策略体检**（股票池或策略有实质变更后；私有 UI 或写回公开回测）：
   - 私有研究台：<http://127.0.0.1:3000/backtest>（SSH 隧道后本机访问），**不**自动部署 Vercel。
   - 公开页也需新回测时：
     ```bash
-    cd ~/github/ai-infra-dashboard && SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh
+    SNAPSHOT_INCLUDE_BACKTEST=1 ./scripts/vps-refresh-public-snapshot.sh
     ```
   - 仅重跑信号、跳过刷池：`SNAPSHOT_SKIP_UNIVERSE_REFRESH=1 ./scripts/vps-refresh-public-snapshot.sh`
 - [ ] 持仓文件权限建议：`chmod 600 private/holdings.local.json`。
