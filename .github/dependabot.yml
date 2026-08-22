@@ -18,11 +18,7 @@ updates:
           - "@types/react"
           - "@types/react-dom"
     ignore:
-      - dependency-name: typescript
-        update-types: ["version-update:semver-major"]
-      - dependency-name: eslint
-        update-types: ["version-update:semver-major"]
-      - dependency-name: better-sqlite3
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: pip
     directory: /pyserver
