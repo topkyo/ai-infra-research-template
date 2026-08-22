@@ -6,6 +6,10 @@
 
 本仓库给的是**研究机器**，不是一份可转发的研究报告。不附带公开股票池、信号快照或买方研报，也没有官方公开站。骨架 fork 自 [madeye](https://github.com/madeye) 的 [硅基文明消费股交易系统](https://github.com/madeye/silicon-civilization-stock-trade)——那是作者自己的研究站。想跟原作叙事，请用上游。
 
+**开箱：** 行情默认走 Eastmoney / AkShare / BaoStock，**不需要 Tushare**。看池子可以先不填任何行情 token（Tushare 只在你显式打开时当补缺）。上游文档开箱就要 Pro token。
+
+**用起来：** `/signals` 是**持仓感知**的——读你本机的现金和持仓，按现价算当前权重，再给出目标仓位和调仓差额。上游信号页对着整池打 buy/hold/sell，不问你手里有什么。没有持仓文件不会假装你空仓；行情或 LLM 失败就报错，不编造买卖结论。实盘股票池和持仓留在本机，git 里只有示例。
+
 推荐用 GitHub 的 **Use this template** 建仓，或：
 
 ```bash
@@ -53,13 +57,6 @@ cd web && npm install && cd ..
 1. **只绑本机。** 不要把端口改成对公网开放。Web API **没有登录**，别人能读持仓、也能花你的 LLM 额度。见 [SECURITY.md](SECURITY.md)。
 2. **失败就报错。** 行情或 LLM 挂了，界面会明确不可用，不会编造买卖结论。
 3. **不是开源软件。** 没有 `LICENSE`。源码公开是为了自托管；未经许可请勿当开源项目再分发。见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 相对原作
-
-- 默认主题是 AI 基建，可用本地 `thesis.md` 换成自己的叙事
-- 目标仓位看持仓；失败不编造
-- git 里只有示例池；实盘名单留在本机
-- 行情默认走 Eastmoney / AkShare / BaoStock，**不需要 Tushare**（Tushare 仅显式打开时补缺）
 
 ## 再往下看
 
