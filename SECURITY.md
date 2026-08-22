@@ -2,9 +2,11 @@
 
 本仓库是个人 A 股主题研究台模板，默认在本机 loopback 运行。以下约束适用于 fork 后的自托管部署。
 
+Web 应用**没有**登录、API key 或刷新令牌。端口暴露到非受信网络时，下列路由均可被直接调用。
+
 ## 无应用层鉴权的 API
 
-以下路由**没有**登录、API key 或刷新令牌等应用层鉴权。若 Web 端口被暴露到非受信网络，调用方可直接读写敏感数据或触发 LLM 消耗：
+**会碰到持仓或 LLM 账单的：**
 
 | 路由 | 风险 |
 |---|---|
@@ -12,6 +14,16 @@
 | `/api/signals` | 触发 LLM 生成目标仓位 |
 | `/api/backtest` | 触发 LLM 回测 |
 | `/api/universe/refresh` | 触发 LLM 改写股票池文件 |
+
+**会打到行情 sidecar、可被用来刷接口的：**
+
+| 路由 | 风险 |
+|---|---|
+| `/api/analyst` | 拉单票分析师/一致预期 |
+| `/api/analyst/batch` | 批量拉分析师数据 |
+| `/api/spot/batch` | 批量拉现价 |
+
+防护靠网络边界，不靠应用内鉴权。
 
 ## 默认网络边界
 
@@ -28,5 +40,5 @@
 
 ## 密钥与私有数据
 
-- 不要提交 `.env`、`.env.local`、API key、`web/data/holdings.local.json`、`web/data/universe.json`（操作者实文件）或 `docs/data/*.json`（公开快照）。
+- 不要提交 `.env`、`.env.local`、API key、`web/data/holdings.local.json`、`web/data/universe.json`（操作者实文件）或 `docs/data/*.json`（操作者自己的快照，不是模板数据）。
 - LLM key 只放在 `web/.env.local` 或部署环境变量；Tushare token 只放在 `pyserver/.env` 或部署环境变量。

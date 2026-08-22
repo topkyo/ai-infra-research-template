@@ -11,6 +11,7 @@ This repository is **topkyo**'s **AI infrastructure research dashboard template*
 - `web/data/universe.example.json`: committed sample watchlist (not a recommended portfolio). Copy to gitignored `web/data/universe.json`.
 - `web/data/thesis.example.md`: default scoring narrative; optional gitignored `web/data/thesis.md` overrides it.
 - `web/data/holdings.example.json`: local holdings example; `web/data/holdings.local.json` is private and ignored.
+- `docs/`: static snapshot **shell** (`index.html`). Generated `docs/data/*.json` is gitignored; the template does not ship research output.
 - `pyserver/`: FastAPI sidecar for market data (free sources first, optional Tushare secondary) and SQLite caching.
 
 ## Build, Test, and Development Commands
