@@ -137,9 +137,15 @@ export function readHoldings(entries?: UniverseEntry[]): LoadedHoldings {
     };
   }
 
+  let raw: string;
+  try {
+    raw = fs.readFileSync(HOLDINGS_FILE, "utf-8");
+  } catch (e) {
+    throw new Error(`holdings.local.json unreadable: ${e instanceof Error ? e.message : String(e)}`);
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(fs.readFileSync(HOLDINGS_FILE, "utf-8")) as unknown;
+    parsed = JSON.parse(raw) as unknown;
   } catch (e) {
     throw new Error(`holdings.local.json invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
   }

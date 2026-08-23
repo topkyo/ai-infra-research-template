@@ -58,6 +58,17 @@ test("readHoldings rejects invalid local holdings files", async () => {
 
   writeHoldings({ cash: 0, positions: [{ symbol: "688256", shares: 0, cost_basis: 1 }] });
   assert.throws(() => readHoldings(universe), /shares/);
+
+  fs.writeFileSync("data/holdings.local.json", "{");
+  assert.throws(() => readHoldings(universe), /invalid JSON/);
+
+  fs.writeFileSync("data/holdings.local.json", "{}");
+  fs.chmodSync("data/holdings.local.json", 0);
+  try {
+    assert.throws(() => readHoldings(universe), /unreadable/);
+  } finally {
+    fs.chmodSync("data/holdings.local.json", 0o644);
+  }
 });
 
 test("writeHoldings validates and writes a local holdings file", async () => {
