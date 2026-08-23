@@ -81,6 +81,9 @@ BACKTEST_LLM_SCORE_BATCH_SIZE=10
 BACKTEST_LLM_TIMEOUT_MS=300000
 UNIVERSE_REFRESH_LLM_TIMEOUT_MS=900000
 UNIVERSE_REFRESH_ENABLED=1
+
+# 私有台首页「公开快照」按钮。空则隐藏。改完必须 rebuild web 镜像。
+# NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL=https://your-snapshot.example
 ```
 
 当前 `docker-compose.yml` 只把 `TUSHARE_TOKEN` 和 `PYSERVER_CACHE_DB` 传给 pyserver。若要在 Docker 中启用 Tushare 次级源，先在 `docker-compose.yml` 的 `pyserver.environment` 增加 `MARKET_ENABLE_TUSHARE_SECONDARY` 和 `STRICT_LIVE_DATA`，再配置：

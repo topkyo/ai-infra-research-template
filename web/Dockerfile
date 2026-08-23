@@ -10,6 +10,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV DEEPSEEK_API_KEY=dummy-ci-key
+# Inlined at build time. Pass via compose build.args from host .env (gitignored).
+ARG NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL=
+ENV NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL=$NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL
+ARG NEXT_PUBLIC_SITE_URL=
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 RUN npm run build
 
 FROM node:24-slim AS runner

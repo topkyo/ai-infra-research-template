@@ -33,6 +33,10 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* is inlined at image build; runtime environment is not enough.
+        NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL: ${NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL:-}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
     ports:
       - "127.0.0.1:3000:3000"
     logging:
@@ -76,6 +80,9 @@ services:
       # Access is network-level (127.0.0.1 / SSH tunnel; Mode A: Caddy Basic Auth).
       UNIVERSE_REFRESH_ENABLED: ${UNIVERSE_REFRESH_ENABLED:-1}
       PYSERVER_URL: http://pyserver:8001
+      # Header 「公开快照」; must also be set as build arg above or the link stays hidden.
+      NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL: ${NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL:-}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
     depends_on:
       pyserver:
         condition: service_healthy

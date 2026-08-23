@@ -62,4 +62,8 @@ Then edit or refresh `web/data/universe.json` on the host; do not commit it.
 | (Docker volume `web-cache`) | Web SQLite cache at `/app/.cache` inside the container |
 | (Docker volume `pyserver-cache`) | pyserver SQLite cache at `/app/cache-data` |
 
+## Public snapshot header link
+
+The private desk shows **公开快照** only when `NEXT_PUBLIC_PUBLIC_SNAPSHOT_URL` is set in the host `.env` **and** the web image is rebuilt (`NEXT_PUBLIC_*` is inlined at build). Do not put the operator URL in git; the public template default is empty.
+
 Do not commit API keys or holdings to git.
